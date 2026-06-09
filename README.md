@@ -1,106 +1,138 @@
-# prayer-api
+# Cenacle
 
-Cloudflare Worker backing the private small-group prayer app at `p/prayer/`.
-Same pattern as `_workers/iw4x-stats`: pathname routing, D1 binding `DB`,
-`json()` / `corsHeaders()` helpers. CORS is locked to the site origin +
-localhost (never `*`) because this is private data.
+A private prayer-request board for one small group, self-hosted on your own
+Cloudflare account. Members log in with a personal invite link (no passwords, no
+email), share requests, tap "I prayed" for each other, and celebrate answered
+prayers. Everything runs in a single Cloudflare Worker backed by D1 (SQLite), so
+there's one URL, no server to babysit, and the data lives in *your* account, not
+anyone else's.
 
-## One-time setup (needs your Cloudflare account)
+> **Decentralized by design.** Every group runs its own isolated instance. There
+> is no shared server and no operator who can see your data. You deploy it, you
+> own it.
 
-From this directory (`_workers/prayer-api/`):
+## Screenshots
 
-1. Install deps:
+| Light | Dark |
+|---|---|
+| ![Cenacle in light mode](docs/screenshots/light.png) | ![Cenacle in dark mode](docs/screenshots/dark.png) |
+
+## Features
+
+- **Per-person invite codes** - each member gets a unique link; no passwords or
+  email. Revoke or reissue access in one command.
+- **Open / Answered / Mine feeds** - browse current requests, look back on
+  answered ones, and find your own.
+- **"I prayed" taps** - let people know they're being prayed for, with simple
+  counts.
+- **Answered wall** - record how a prayer was answered and keep the testimony.
+- **Anonymous requests** - post without your name attached (see the nuance in
+  [SECURITY.md](SECURITY.md)).
+- **Updates thread** - add follow-ups to a request over time.
+- **Admin stats & moderation** - a group overview and the ability to remove any
+  post.
+- **Light & dark mode** with three color palettes (warm, cool, neutral).
+- **Installable** - "Add to Home Screen" on phones for an app-like experience.
+- **Private by default** - `noindex`, no trackers, no third-party calls.
+
+## Deploy your own (~15 minutes)
+
+You need a [Cloudflare account](https://dash.cloudflare.com/sign-up) (the free
+tier is plenty) and [Node.js](https://nodejs.org/) installed.
+
+1. **Clone and install:**
    ```
+   git clone https://github.com/your-username/cenacle.git
+   cd cenacle
    npm install
    ```
 
-2. Create the D1 database and copy the printed `database_id` into
-   `wrangler.jsonc` (replace `REPLACE_WITH_D1_DATABASE_ID`):
+2. **Create your database** and paste the printed `database_id` into
+   `wrangler.jsonc` (replacing the existing one):
    ```
    npx wrangler d1 create prayer_app
    ```
 
-3. Apply the schema (local for dev, remote for production):
+3. **Apply the schema:**
    ```
-   npx wrangler d1 migrations apply prayer_app --local
    npx wrangler d1 migrations apply prayer_app --remote
    ```
 
-4. Set the session-signing secret (any long random string; never committed):
+4. **Set the session secret** (any long random string; it's never committed):
    ```
    npx wrangler secret put SESSION_SECRET
    ```
-   For local dev, add the same value to a `.dev.vars` file (gitignored):
-   ```
-   SESSION_SECRET=your-long-random-string
-   ```
 
-5. Seed members and hand out their codes. Names after `--admin` (up to `--`)
-   become admins; the rest are members:
+5. **Name your group.** Edit the `vars` block in `wrangler.jsonc`:
+   ```jsonc
+   "vars": {
+     "GROUP_NAME": "Grace Group",
+     "THEME": "warm"
+   }
    ```
-   node seed-members.mjs --admin "Justin" -- "Alice" "Bob"        # local DB
-   node seed-members.mjs --remote --admin "Justin" -- "Alice"     # deployed DB
-   ```
-   It prints a `?code=...` link per person. Copy them - the raw codes are NOT
-   stored anywhere (only their SHA-256 hashes go into D1).
+   Optionally drop your own square image in at `public/icon.jpg`.
 
-6. Deploy:
+6. **Deploy** and note the live URL it prints:
    ```
    npm run deploy
    ```
 
-The frontend (`p/prayer/app.js`) points at
-`https://prayer-api.justinswain2.workers.dev`. If your deployed Worker URL
-differs, update `API_BASE` there.
+7. **Add your people** and hand out their invite links (names after `--admin`,
+   up to `--`, become admins):
+   ```
+   node scripts/seed-members.mjs --remote --url https://your-app.workers.dev --admin "You" -- "Alice" "Bob"
+   ```
+   Each person gets a `?code=...` link. Copy them when they print - the raw codes
+   are never stored (only their SHA-256 hashes go into the database).
+
+That's it. Send each member their link; tapping it logs them in.
+
+> Using a custom domain instead of `*.workers.dev` is optional - add it in the
+> Cloudflare dashboard under your Worker's settings. The default workers.dev
+> subdomain works with zero DNS setup.
+
+## Configuration reference
+
+Everything an admin configures lives in two places:
+
+| What | Where | Notes |
+|---|---|---|
+| `GROUP_NAME` | `wrangler.jsonc` `vars` | Title, manifest, onboarding, invite copy. |
+| `THEME` | `wrangler.jsonc` `vars` | `warm` (default), `cool`, or `neutral`. Sets both light and dark palettes. |
+| App icon | `public/icon.jpg` | Replace with your own square image. |
+| `SESSION_SECRET` | `wrangler secret put` | HMAC signing key. A real secret, never in the repo. |
+| `database_id` | `wrangler.jsonc` `d1_databases` | From `wrangler d1 create`. |
+
+Change a value, run `npm run deploy`, done - there's no build step or framework.
+(Changing *data* like members or posts takes effect instantly; only code or
+config changes need a redeploy.)
 
 ## Local development
 
 ```
+cp .dev.vars.example .dev.vars              # then set SESSION_SECRET
+npx wrangler d1 migrations apply prayer_app --local
+node scripts/seed-members.mjs --admin "You" # prints a local invite link
 npm run dev
 ```
 
-Serves on `http://localhost:8787`. The frontend's `API_BASE` is the production
-URL, so to test against local: temporarily point `API_BASE` at
-`http://localhost:8787`, or seed/redeem against the local DB.
+`npm run dev` serves the whole app (page + API) from one local URL. Open that URL
+with the `?code=...` link from the seed step to log in. Use the dev URL, not an
+editor's static preview, which bypasses the Worker.
 
-## Endpoints (Phase A)
+## Documentation
 
-| Method | Path                  | Auth | Purpose |
-|--------|-----------------------|------|---------|
-| POST   | `/session`            | code | Redeem invite code -> session token + profile |
-| GET    | `/me`                 | yes  | Current member + "new since last visit" badge counts |
-| GET    | `/requests?status=`   | yes  | Feed: `open` (default), `answered`, `mine` |
-| GET    | `/requests/:id`       | yes  | Request detail + updates thread |
-| POST   | `/requests/:id/pray`  | yes  | Record an "I prayed" tap (2s dedup); returns counts |
+- **[ADMIN.md](ADMIN.md)** - day-to-day tasks: add/remove members, reset codes,
+  moderate posts, back up the database, year-end review.
+- **[SECURITY.md](SECURITY.md)** - the trust model, how auth and anonymity work,
+  and how to report a vulnerability.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - run it locally, code style, and scope.
 
-Phases B-E (create requests, updates, answered wall, stats, prayer graph) are
-in `p/prayer/PLAN.md`.
+## Tech
 
-## Auth model
+Cloudflare Workers (single-origin: API + static assets), D1 (SQLite), and a
+dependency-free vanilla-JS frontend. No build step, no framework.
 
-Per-person invite codes (no passwords, no email). A code is hashed (SHA-256)
-and matched to a member; the Worker mints an HMAC session token
-(`base64url(payload).hmac`, payload = `{memberId, tokenVersion, iat}`) stored
-in `localStorage`. Codes are not single-use - the same link works on any
-device. Bump a member's `token_version` in D1 to instantly revoke every live
-session for that person.
+## License
 
-## Revoking a member
-
-```
-npx wrangler d1 execute prayer_app --remote --command \
-  "UPDATE members SET token_version = token_version + 1 WHERE name = 'Alice';"
-```
-
-Optionally also rotate `token_hash` so the old code can't mint a new session.
-
-## Notes for seeding by hand (testing)
-
-To create a couple of requests to see in the feed before the create-request UI
-(Phase B) exists:
-
-```
-npx wrangler d1 execute prayer_app --local --command \
-  "INSERT INTO requests (author_id, title, body, category, status, created_at) \
-   VALUES (1, 'Travel safety', 'Driving to see family this weekend.', 'family', 'open', strftime('%s','now')*1000);"
-```
+[MIT](LICENSE)

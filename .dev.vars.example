@@ -1,0 +1,9 @@
+# Local development secrets. Copy this file to ".dev.vars" (which is
+# gitignored) and fill in a value. These are used only by `npm run dev`.
+#
+# In production, SESSION_SECRET is a real Worker secret, set once with:
+#   npx wrangler secret put SESSION_SECRET
+# It is never read from this file or committed to the repo.
+
+# HMAC key used to sign session tokens. Any long, random string works locally.
+SESSION_SECRET=local-dev-secret-change-me
