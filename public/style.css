@@ -76,6 +76,152 @@
     --backdrop: rgba(0, 0, 0, 0.6);
 }
 
+/* ─────────────────────────── palette: cool ───────────────────────────
+   Selected with THEME=cool (data-palette on <html>). Soft slate blue.
+   Each block restates the full token set so the dark variant always wins
+   over the warm dark defaults regardless of source order. */
+[data-palette="cool"] {
+    color-scheme: light;
+
+    --bg: #eef3f7;
+    --bg-2: #e1eaf1;
+    --surface: #f7fafc;
+    --text: #344655;
+    --muted: #6d8294;
+    --border: #d3e0ea;
+    --border-strong: #bccedd;
+
+    --primary: #5b8fb0;
+    --primary-hover: #4a7c9d;
+    --primary-ink: #14242e;
+    --primary-soft-bg: #d6e7f1;
+    --primary-soft-border: #a8c9de;
+
+    --success: #6fa890;
+    --success-bg: rgba(111, 168, 144, 0.16);
+    --success-border: #93c1ad;
+    --success-ink: #3f6a57;
+
+    --danger: #c96a5e;
+    --danger-ink: #b34d41;
+    --danger-bg: rgba(201, 106, 94, 0.12);
+
+    --badge-bg: #5b9bd5;
+    --badge-ink: #10243a;
+
+    --shadow: 0 6px 20px rgba(54, 84, 120, 0.12);
+    --shadow-soft: 0 3px 12px rgba(54, 84, 120, 0.10);
+    --focus: #5b8fb0;
+    --backdrop: rgba(40, 54, 68, 0.45);
+}
+
+[data-theme="dark"][data-palette="cool"] {
+    color-scheme: dark;
+
+    --bg: #161d23;
+    --bg-2: #1d262e;
+    --surface: #212c34;
+    --text: #e3edf4;
+    --muted: #92a6b6;
+    --border: #2c3a44;
+    --border-strong: #3a4c58;
+
+    --primary: #6fa8cc;
+    --primary-hover: #84b8d8;
+    --primary-ink: #0e1a22;
+    --primary-soft-bg: #223038;
+    --primary-soft-border: #3a5365;
+
+    --success: #7fb29f;
+    --success-bg: rgba(127, 178, 159, 0.16);
+    --success-border: #577d6b;
+    --success-ink: #b6e0cf;
+
+    --danger: #e1897d;
+    --danger-ink: #ec9a8f;
+    --danger-bg: rgba(225, 137, 125, 0.12);
+
+    --badge-bg: #5e9fd0;
+    --badge-ink: #08233a;
+
+    --shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+    --shadow-soft: 0 3px 12px rgba(0, 0, 0, 0.28);
+    --focus: #84b8d8;
+    --backdrop: rgba(0, 0, 0, 0.6);
+}
+
+/* ────────────────────────── palette: neutral ──────────────────────────
+   Selected with THEME=neutral. Restrained warm-grey with a sage accent. */
+[data-palette="neutral"] {
+    color-scheme: light;
+
+    --bg: #f4f3f1;
+    --bg-2: #e9e7e2;
+    --surface: #fbfaf8;
+    --text: #3a3733;
+    --muted: #807b73;
+    --border: #e3ded7;
+    --border-strong: #cdc7bd;
+
+    --primary: #8d9a86;
+    --primary-hover: #7c8a75;
+    --primary-ink: #232a20;
+    --primary-soft-bg: #e2e7dd;
+    --primary-soft-border: #c3cdba;
+
+    --success: #7fa877;
+    --success-bg: rgba(127, 168, 119, 0.16);
+    --success-border: #9ec197;
+    --success-ink: #4a6a42;
+
+    --danger: #c96a5e;
+    --danger-ink: #b34d41;
+    --danger-bg: rgba(201, 106, 94, 0.12);
+
+    --badge-bg: #b0a48f;
+    --badge-ink: #322a1c;
+
+    --shadow: 0 6px 20px rgba(80, 76, 68, 0.12);
+    --shadow-soft: 0 3px 12px rgba(80, 76, 68, 0.10);
+    --focus: #8d9a86;
+    --backdrop: rgba(58, 55, 51, 0.45);
+}
+
+[data-theme="dark"][data-palette="neutral"] {
+    color-scheme: dark;
+
+    --bg: #1c1b19;
+    --bg-2: #242220;
+    --surface: #2a2825;
+    --text: #ece8e1;
+    --muted: #a8a298;
+    --border: #38352f;
+    --border-strong: #48443c;
+
+    --primary: #9aa893;
+    --primary-hover: #aab8a3;
+    --primary-ink: #181d16;
+    --primary-soft-bg: #2c302a;
+    --primary-soft-border: #474f40;
+
+    --success: #88b27f;
+    --success-bg: rgba(136, 178, 127, 0.16);
+    --success-border: #5e7d57;
+    --success-ink: #bfe0b6;
+
+    --danger: #e1897d;
+    --danger-ink: #ec9a8f;
+    --danger-bg: rgba(225, 137, 125, 0.12);
+
+    --badge-bg: #bcae93;
+    --badge-ink: #2a2316;
+
+    --shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+    --shadow-soft: 0 3px 12px rgba(0, 0, 0, 0.28);
+    --focus: #aab8a3;
+    --backdrop: rgba(0, 0, 0, 0.6);
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 body {

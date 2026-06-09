@@ -16,6 +16,22 @@ const BODY_MAX = 4000;
 const UPDATE_MAX = 2000;
 const ANSWER_MAX = 2000;
 
+// Branding palettes. Keys match the THEME var; values are the page background
+// used for the manifest and the <meta theme-color> tints. The full colour sets
+// live in public/style.css under [data-palette].
+const PALETTES = {
+  warm: { lightBg: "#fbf3e9", darkBg: "#211b18" },
+  cool: { lightBg: "#eef3f7", darkBg: "#161d23" },
+  neutral: { lightBg: "#f4f3f1", darkBg: "#1c1b19" },
+};
+
+function readConfig(env) {
+  const groupName = (env.GROUP_NAME && String(env.GROUP_NAME).trim()) || "Prayer";
+  let theme = (env.THEME && String(env.THEME).trim().toLowerCase()) || "warm";
+  if (!PALETTES[theme]) theme = "warm";
+  return { groupName, theme };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -32,9 +48,72 @@ export default {
       }
     }
 
-    return env.ASSETS.fetch(request);
+    // The PWA manifest is generated from the admin's branding config.
+    if (url.pathname === "/manifest.webmanifest") {
+      return manifestResponse(env);
+    }
+
+    const assetRes = await env.ASSETS.fetch(request);
+
+    // Inject branding into HTML pages; serve other assets untouched.
+    const contentType = assetRes.headers.get("content-type") || "";
+    if (contentType.includes("text/html")) {
+      return rewriteHtml(assetRes, env);
+    }
+    return assetRes;
   },
 };
+
+function manifestResponse(env) {
+  const { groupName, theme } = readConfig(env);
+  const colors = PALETTES[theme];
+  const manifest = {
+    name: groupName,
+    short_name: groupName,
+    description: `Private prayer space for ${groupName}.`,
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: colors.lightBg,
+    theme_color: colors.lightBg,
+    icons: [
+      { src: "/icon.jpg", sizes: "360x360", type: "image/jpeg", purpose: "any" },
+    ],
+  };
+  return new Response(JSON.stringify(manifest), {
+    headers: { "Content-Type": "application/manifest+json; charset=utf-8" },
+  });
+}
+
+// Stream the static HTML through HTMLRewriter, injecting window.__CONFIG__ and
+// applying the palette so the page is branded before the first paint.
+function rewriteHtml(res, env) {
+  const { groupName, theme } = readConfig(env);
+  const colors = PALETTES[theme];
+  // Escape "<" so the group name can't break out of the inline <script>.
+  const payload = JSON.stringify({ groupName, theme }).replace(/</g, "\\u003c");
+
+  return new HTMLRewriter()
+    .on("html", {
+      element(e) { e.setAttribute("data-palette", theme); },
+    })
+    .on("title", {
+      element(e) { e.setInnerContent(groupName); },
+    })
+    .on('meta[name="apple-mobile-web-app-title"]', {
+      element(e) { e.setAttribute("content", groupName); },
+    })
+    .on('meta[name="theme-color"]', {
+      element(e) {
+        const media = e.getAttribute("media") || "";
+        e.setAttribute("content", media.includes("dark") ? colors.darkBg : colors.lightBg);
+      },
+    })
+    .on("head", {
+      element(e) { e.append(`<script>window.__CONFIG__=${payload};</script>`, { html: true }); },
+    })
+    .transform(res);
+}
 
 async function dispatch(request, env, path) {
   const method = request.method;

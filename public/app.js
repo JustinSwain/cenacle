@@ -7,6 +7,11 @@ const ONBOARDED_KEY = "prayer_onboarded_v1";
 const THEME_KEY = "prayer_theme_v1";
 const FEED_CACHE_KEY = "prayer_feed_v1";
 
+// Branding injected by the Worker (window.__CONFIG__). Falls back to "Prayer"
+// when the page is served as a raw static asset without the Worker.
+const CONFIG = (window.__CONFIG__ && typeof window.__CONFIG__ === "object") ? window.__CONFIG__ : {};
+const GROUP_NAME = (typeof CONFIG.groupName === "string" && CONFIG.groupName.trim()) || "Prayer";
+
 const CATEGORIES = [
   { value: "general", label: "General", emoji: "\u{1F64F}" },
   { value: "health", label: "Health", emoji: "\u{1FA7A}" },
@@ -106,6 +111,8 @@ const el = {
   gateSubmit: document.getElementById("gate-submit"),
   gateError: document.getElementById("gate-error"),
   shell: document.getElementById("shell"),
+  gateTitle: document.querySelector(".gate-title"),
+  shellTitle: document.querySelector(".shell-title"),
   who: document.getElementById("who"),
   feed: document.getElementById("feed"),
   feedStatus: document.getElementById("feed-status"),
@@ -842,14 +849,14 @@ function screenshotSlot(src, altText) {
 function addToHomeBlock() {
   const wrap = elem("div", "home-help");
   wrap.appendChild(elem("p", "info-lead",
-    "Add Prayer to your home screen so you can open it in one tap, always signed in."));
+    `Add ${GROUP_NAME} to your home screen so you can open it in one tap, always signed in.`));
 
   const ios = elem("div", "home-steps");
   ios.appendChild(elem("h4", "home-os", "\u{1F4F1} iPhone or iPad (Safari)"));
   const iosOl = elem("ol", "info-list");
   iosOl.appendChild(elem("li", null, "Tap the Share button (the square with an up arrow)."));
   iosOl.appendChild(elem("li", null, "Scroll down and tap Add to Home Screen."));
-  iosOl.appendChild(elem("li", null, "Tap Add. A Prayer icon appears on your home screen."));
+  iosOl.appendChild(elem("li", null, `Tap Add. A ${GROUP_NAME} icon appears on your home screen.`));
   ios.appendChild(iosOl);
   ios.appendChild(screenshotSlot("screenshots/ios-add-home.png",
     "iPhone: tap Share, then Add to Home Screen."));
@@ -860,7 +867,7 @@ function addToHomeBlock() {
   const andOl = elem("ol", "info-list");
   andOl.appendChild(elem("li", null, "Tap the menu (three dots, top right)."));
   andOl.appendChild(elem("li", null, "Tap Add to Home screen (or Install app)."));
-  andOl.appendChild(elem("li", null, "Tap Add. A Prayer icon appears on your home screen."));
+  andOl.appendChild(elem("li", null, `Tap Add. A ${GROUP_NAME} icon appears on your home screen.`));
   android.appendChild(andOl);
   android.appendChild(screenshotSlot("screenshots/android-add-home.png",
     "Android: open the menu, then Add to Home screen."));
@@ -885,7 +892,7 @@ function openOnboarding() {
 }
 
 function stepWelcome(modal, ctx) {
-  modalHeader(modal, "Welcome to Prayer");
+  modalHeader(modal, `Welcome to ${GROUP_NAME}`);
   modal.appendChild(elem("p", "info-lead",
     "This is a private space for our group. First, how would you like your name shown to everyone?"));
 
@@ -1255,5 +1262,12 @@ async function boot() {
   showGate();
 }
 
+function applyBranding() {
+  document.title = GROUP_NAME;
+  if (el.gateTitle) el.gateTitle.textContent = GROUP_NAME;
+  if (el.shellTitle) el.shellTitle.textContent = GROUP_NAME;
+}
+
+applyBranding();
 initTheme();
 boot();

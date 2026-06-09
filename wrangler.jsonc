@@ -15,13 +15,30 @@
 		"nodejs_compat"
 	],
 	/**
+	 * Branding config. Each admin edits these two values - no code changes
+	 * needed. GROUP_NAME is shown as the app title and in onboarding copy.
+	 * THEME picks a colour palette: "warm" (default), "cool", or "neutral".
+	 * Both light and dark modes follow the chosen palette.
+	 */
+	"vars": {
+		"GROUP_NAME": "Prayer",
+		"THEME": "warm"
+	},
+	/**
 	 * Static assets (the frontend in public/) are served from the same origin
 	 * as the API. The Worker handles /api/* and falls back to env.ASSETS for
 	 * everything else, so the whole app lives behind one URL with no CORS.
+	 *
+	 * run_worker_first lists the HTML entry points the Worker must intercept
+	 * (to inject window.__CONFIG__); all other assets are served directly.
 	 */
 	"assets": {
 		"directory": "./public",
-		"binding": "ASSETS"
+		"binding": "ASSETS",
+		"run_worker_first": [
+			"/",
+			"/index.html"
+		]
 	},
 	/**
 	 * D1 binding. Run `wrangler d1 create prayer_app` and paste the printed
