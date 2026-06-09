@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prayer</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Private prayer space for our small group.">
+    <link rel="icon" href="/images/spacecat.png">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="/images/prayer_hands.jpg">
+    <meta name="theme-color" content="#fbf3e9" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#211b18" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Prayer">
+    <meta name="mobile-web-app-capable" content="yes">
+    <!-- Set the theme before first paint to avoid a flash of the wrong mode. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem("prayer_theme_v1");
+                if (t !== "light" && t !== "dark") {
+                    t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+                }
+                document.documentElement.setAttribute("data-theme", t);
+            } catch (e) {
+                document.documentElement.setAttribute("data-theme", "light");
+            }
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&family=Quicksand:wght@500;600;700&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main id="app">
+        <!-- Theme toggle: available on both the login gate and the app shell. -->
+        <div class="topbar">
+            <button id="theme-toggle" class="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Dark mode">
+                <span class="theme-toggle-track">
+                    <span class="theme-toggle-icon" aria-hidden="true">&#9728;&#65039;</span>
+                    <span class="theme-toggle-icon" aria-hidden="true">&#127769;</span>
+                    <span class="theme-toggle-thumb"></span>
+                </span>
+            </button>
+        </div>
+
+        <!-- Login gate: shown when there is no valid session -->
+        <section id="gate" class="gate" hidden>
+            <h1 class="gate-title">Prayer</h1>
+            <p class="gate-lead">
+                Tap your personal link again, or type your code here.
+            </p>
+            <form id="gate-form" class="gate-form" autocomplete="off">
+                <label for="code-input" class="visually-hidden">Your code</label>
+                <input
+                    id="code-input"
+                    name="code"
+                    type="text"
+                    inputmode="text"
+                    autocapitalize="none"
+                    spellcheck="false"
+                    placeholder="like coral-7382"
+                    aria-describedby="gate-error">
+                <button type="submit" id="gate-submit">Enter</button>
+            </form>
+            <p id="gate-error" class="gate-error" role="alert" hidden></p>
+        </section>
+
+        <!-- Logged-in shell -->
+        <section id="shell" class="shell" hidden>
+            <header class="shell-header">
+                <h1 class="shell-title">Prayer</h1>
+                <div class="shell-header-right">
+                    <span id="who" class="who"></span>
+                    <button id="stats-btn" class="help-btn" type="button" aria-label="Group stats" hidden>Stats</button>
+                    <button id="help-btn" class="help-btn" type="button" aria-label="Help and settings">Help</button>
+                </div>
+            </header>
+
+            <nav class="tabs" role="tablist" aria-label="Prayer feed">
+                <button class="tab" id="tab-open" data-tab="open" role="tab" aria-selected="true"><span class="tab-label">Open</span><span class="tab-badge" hidden></span></button>
+                <button class="tab" id="tab-answered" data-tab="answered" role="tab" aria-selected="false"><span class="tab-label">Answered</span><span class="tab-badge" hidden></span></button>
+                <button class="tab" id="tab-mine" data-tab="mine" role="tab" aria-selected="false"><span class="tab-label">Mine</span><span class="tab-badge" hidden></span></button>
+            </nav>
+
+            <button id="new-request-btn" class="new-btn" type="button">+ Share a request</button>
+
+            <p id="summary" class="summary" hidden></p>
+
+            <div id="feed-status" class="feed-status" hidden></div>
+            <ul id="feed" class="feed" aria-live="polite"></ul>
+        </section>
+
+        <!-- Modal host: create form and request detail render here -->
+        <div id="modal-backdrop" class="modal-backdrop" hidden>
+            <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

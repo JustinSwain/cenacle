@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Wrangler / Cloudflare local state
+.wrangler/
+.dev.vars
+
+# Build output
+dist/
+
+# Logs
+*.log
+
+# Local database backups (may contain private group data)
+*-backup-*.sql
+cenacle-backup-*.sql
+prayer-backup-*.sql

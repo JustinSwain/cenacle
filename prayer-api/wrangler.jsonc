@@ -1,0 +1,32 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "prayer-api",
+	"main": "src/index.js",
+	"compatibility_date": "2026-05-27",
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	/**
+	 * D1 binding. Run `wrangler d1 create prayer_app` and paste the printed
+	 * database_id here before first deploy. See README.md.
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "prayer_app",
+			"database_id": "de62e54c-a380-4063-bb35-7a746be6cdf0"
+		},
+	]
+	/**
+	 * SESSION_SECRET is a Worker secret, never committed. Set it with:
+	 *   wrangler secret put SESSION_SECRET
+	 */
+}
