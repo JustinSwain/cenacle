@@ -1,9 +1,0 @@
-node_modules/
-.dev.vars
-.wrangler/
-dist/
-*.log
-
-# Local-only admin notes and database backups (contain private group data)
-ADMIN.md
-prayer-backup-*.sql

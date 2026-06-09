@@ -15,6 +15,15 @@
 		"nodejs_compat"
 	],
 	/**
+	 * Static assets (the frontend in public/) are served from the same origin
+	 * as the API. The Worker handles /api/* and falls back to env.ASSETS for
+	 * everything else, so the whole app lives behind one URL with no CORS.
+	 */
+	"assets": {
+		"directory": "./public",
+		"binding": "ASSETS"
+	},
+	/**
 	 * D1 binding. Run `wrangler d1 create prayer_app` and paste the printed
 	 * database_id here before first deploy. See README.md.
 	 */

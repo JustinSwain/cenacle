@@ -1,7 +1,7 @@
 /* Prayer app frontend. Login gate + feed (Open/Answered/Mine), create form,
    request detail with updates thread and author-only mark-answered/archive. */
 
-const API_BASE = "https://prayer-api.justinswain2.workers.dev";
+const API_BASE = "/api";
 const SESSION_KEY = "prayer_session_v1";
 const ONBOARDED_KEY = "prayer_onboarded_v1";
 const THEME_KEY = "prayer_theme_v1";

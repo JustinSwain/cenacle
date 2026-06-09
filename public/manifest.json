@@ -2,14 +2,14 @@
   "name": "Prayer",
   "short_name": "Prayer",
   "description": "Private prayer space for our small group.",
-  "start_url": "/p/prayer/",
-  "scope": "/p/prayer/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#fbf3e9",
   "theme_color": "#fbf3e9",
   "icons": [
     {
-      "src": "/images/prayer_hands.jpg",
+      "src": "/icon.jpg",
       "sizes": "360x360",
       "type": "image/jpeg",
       "purpose": "any"

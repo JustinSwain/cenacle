@@ -1,21 +1,11 @@
 /**
- * prayer-api - Cloudflare Worker backing the private small-group prayer app.
+ * Cenacle - Cloudflare Worker backing the private small-group prayer app.
  *
- * Pattern mirrors _workers/iw4x-stats: pathname routing, json()/corsHeaders()
- * helpers, D1 binding `DB`. Auth is per-person invite codes minting HMAC
- * session tokens. See p/prayer/PLAN.md for the full design.
+ * Single origin: one Worker serves both the static page (via the ASSETS
+ * binding) and the JSON API (under the /api/ prefix). Same-origin only, so
+ * there is no CORS layer. Auth is per-person invite codes minting HMAC session
+ * tokens. See docs/PLAN.md for the full design.
  */
-
-// CORS allow-list. Private data, so never `*` (SEC1). Site origin + localhost.
-const ALLOWED_ORIGINS = new Set([
-  "https://justinswain.dev",
-  "https://www.justinswain.dev",
-  "https://justinswain.github.io",
-  "http://localhost:8000",
-  "http://127.0.0.1:8000",
-  "http://localhost:5500",
-  "http://127.0.0.1:5500",
-]);
 
 const VALID_CATEGORIES = new Set([
   "general", "health", "family", "work", "spiritual", "praise",
@@ -29,79 +19,78 @@ const ANSWER_MAX = 2000;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const origin = request.headers.get("Origin");
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    // /api/* is the JSON API; every other path is a static asset.
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+      const path = url.pathname.slice(4) || "/"; // strip the "/api" prefix
+      try {
+        const route = await dispatch(request, env, path);
+        return route ?? json({ error: "Not found" }, 404);
+      } catch (err) {
+        console.error("Unhandled error:", err);
+        return json({ error: "Internal error" }, 500);
+      }
     }
 
-    try {
-      const route = await dispatch(request, env, url);
-      return route ?? json({ error: "Not found" }, 404, origin);
-    } catch (err) {
-      console.error("Unhandled error:", err);
-      return json({ error: "Internal error" }, 500, origin);
-    }
+    return env.ASSETS.fetch(request);
   },
 };
 
-async function dispatch(request, env, url) {
-  const origin = request.headers.get("Origin");
-  const path = url.pathname;
+async function dispatch(request, env, path) {
   const method = request.method;
 
   if (method === "POST" && path === "/session") {
-    return handleSession(request, env, origin);
+    return handleSession(request, env);
   }
 
   if (method === "GET" && path === "/me") {
-    return withMember(request, env, origin, (member) => handleMe(env, member, origin));
+    return withMember(request, env, (member) => handleMe(env, member));
   }
 
   if (method === "POST" && path === "/me") {
-    return withMember(request, env, origin, (member) => handleUpdateProfile(request, env, member, origin));
+    return withMember(request, env, (member) => handleUpdateProfile(request, env, member));
   }
 
   if (method === "GET" && path === "/stats") {
-    return withMember(request, env, origin, (member) => handleStats(env, member, origin));
+    return withMember(request, env, (member) => handleStats(env, member));
   }
 
   if (method === "GET" && path === "/requests") {
-    return withMember(request, env, origin, (member) => handleListRequests(request, env, member, origin));
+    return withMember(request, env, (member) => handleListRequests(request, env, member));
   }
 
   if (method === "POST" && path === "/requests") {
-    return withMember(request, env, origin, (member) => handleCreateRequest(request, env, member, origin));
+    return withMember(request, env, (member) => handleCreateRequest(request, env, member));
   }
 
   const prayMatch = path.match(/^\/requests\/(\d+)\/pray$/);
   if (method === "POST" && prayMatch) {
     const id = Number(prayMatch[1]);
-    return withMember(request, env, origin, (member) => handlePray(env, member, id, origin));
+    return withMember(request, env, (member) => handlePray(env, member, id));
   }
 
   const updateMatch = path.match(/^\/requests\/(\d+)\/update$/);
   if (method === "POST" && updateMatch) {
     const id = Number(updateMatch[1]);
-    return withMember(request, env, origin, (member) => handleAddUpdate(request, env, member, id, origin));
+    return withMember(request, env, (member) => handleAddUpdate(request, env, member, id));
   }
 
   const answerMatch = path.match(/^\/requests\/(\d+)\/answer$/);
   if (method === "POST" && answerMatch) {
     const id = Number(answerMatch[1]);
-    return withMember(request, env, origin, (member) => handleAnswer(request, env, member, id, origin));
+    return withMember(request, env, (member) => handleAnswer(request, env, member, id));
   }
 
   const archiveMatch = path.match(/^\/requests\/(\d+)\/archive$/);
   if (method === "POST" && archiveMatch) {
     const id = Number(archiveMatch[1]);
-    return withMember(request, env, origin, (member) => handleArchive(env, member, id, origin));
+    return withMember(request, env, (member) => handleArchive(env, member, id));
   }
 
   const detailMatch = path.match(/^\/requests\/(\d+)$/);
   if (method === "GET" && detailMatch) {
     const id = Number(detailMatch[1]);
-    return withMember(request, env, origin, (member) => handleRequestDetail(env, member, id, origin));
+    return withMember(request, env, (member) => handleRequestDetail(env, member, id));
   }
 
   return null;
@@ -109,16 +98,16 @@ async function dispatch(request, env, url) {
 
 // ─────────────────────────────── auth ───────────────────────────────
 
-async function handleSession(request, env, origin) {
+async function handleSession(request, env) {
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "Invalid JSON body" }, 400, origin);
+    return json({ error: "Invalid JSON body" }, 400);
   }
 
   const code = normalizeCode(body?.code);
-  if (!code) return json({ error: "Missing code" }, 400, origin);
+  if (!code) return json({ error: "Missing code" }, 400);
 
   const tokenHash = await sha256Hex(code);
   const member = await env.DB.prepare(`
@@ -129,7 +118,7 @@ async function handleSession(request, env, origin) {
 
   if (!member) {
     // Generic message: do not reveal whether a code is valid.
-    return json({ error: "That code was not recognized." }, 401, origin);
+    return json({ error: "That code was not recognized." }, 401);
   }
 
   const token = await mintToken(env, member);
@@ -143,13 +132,13 @@ async function handleSession(request, env, origin) {
       name: member.name,
       role: member.role,
     },
-  }, 200, origin);
+  });
 }
 
 // Wraps a handler that needs a logged-in member; returns 401 otherwise.
-async function withMember(request, env, origin, handler) {
+async function withMember(request, env, handler) {
   const member = await requireMember(request, env);
-  if (!member) return json({ error: "Unauthorized" }, 401, origin);
+  if (!member) return json({ error: "Unauthorized" }, 401);
   return handler(member);
 }
 
@@ -216,7 +205,7 @@ async function touchLastSeen(env, memberId) {
 // start, computes per-tab counts against it, then advances the marker to now
 // (consume-on-read). A member's first visit (last_seen_at NULL) shows zero so
 // they are not greeted with a huge backlog count.
-async function handleMe(env, member, origin) {
+async function handleMe(env, member) {
   const firstVisit = member.last_seen_at == null;
   const since = firstVisit ? Date.now() : toInt(member.last_seen_at);
 
@@ -257,19 +246,19 @@ async function handleMe(env, member, origin) {
     since,
     firstVisit,
     badges,
-  }, 200, origin);
+  });
 }
 
-async function handleUpdateProfile(request, env, member, origin) {
+async function handleUpdateProfile(request, env, member) {
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "Invalid JSON body" }, 400, origin);
+    return json({ error: "Invalid JSON body" }, 400);
   }
 
   const name = cleanText(body?.name, NAME_MAX);
-  if (!name) return json({ error: "Please enter a name." }, 400, origin);
+  if (!name) return json({ error: "Please enter a name." }, 400);
 
   await env.DB.prepare(`UPDATE members SET name = ? WHERE id = ?`)
     .bind(name, member.id)
@@ -277,7 +266,7 @@ async function handleUpdateProfile(request, env, member, origin) {
 
   return json({
     member: { id: member.id, name, role: member.role },
-  }, 200, origin);
+  });
 }
 
 // ─────────────────────────────── stats ───────────────────────────────
@@ -285,7 +274,7 @@ async function handleUpdateProfile(request, env, member, origin) {
 // Public + personal stats for everyone; the admin block is included only for
 // admins (gated server-side, never trust the client). No prayer graph and no
 // reciprocity ratio by product decision.
-async function handleStats(env, member, origin) {
+async function handleStats(env, member) {
   const now = Date.now();
   const year = new Date(now).getUTCFullYear();
   const yearStart = Date.UTC(year, 0, 1);
@@ -326,7 +315,7 @@ async function handleStats(env, member, origin) {
     admin: member.role === "admin" ? await computeAdminStats(env, now) : null,
   };
 
-  return json({ stats }, 200, origin);
+  return json({ stats });
 }
 
 async function computeAdminStats(env, now) {
@@ -421,7 +410,7 @@ function medianHours(msValues) {
 
 // ─────────────────────────── requests feed ───────────────────────────
 
-async function handleListRequests(request, env, member, origin) {
+async function handleListRequests(request, env, member) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || "open";
 
@@ -454,10 +443,10 @@ async function handleListRequests(request, env, member, origin) {
   `).bind(member.id, ...binds).all();
 
   const cards = (results ?? []).map((row) => serializeCard(row, member));
-  return json({ requests: cards }, 200, origin);
+  return json({ requests: cards });
 }
 
-async function handleRequestDetail(env, member, id, origin) {
+async function handleRequestDetail(env, member, id) {
   const row = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
@@ -472,7 +461,7 @@ async function handleRequestDetail(env, member, id, origin) {
   `).bind(member.id, id).first();
 
   if (!row || row.status === "archived") {
-    return json({ error: "Not found" }, 404, origin);
+    return json({ error: "Not found" }, 404);
   }
 
   const { results: updateRows } = await env.DB.prepare(`
@@ -507,14 +496,14 @@ async function handleRequestDetail(env, member, id, origin) {
     name: p.name,
   }));
 
-  return json({ request: card }, 200, origin);
+  return json({ request: card });
 }
 
-async function handlePray(env, member, id, origin) {
+async function handlePray(env, member, id) {
   const req = await env.DB.prepare(`SELECT id, status FROM requests WHERE id = ?`)
     .bind(id).first();
   if (!req || req.status === "archived") {
-    return json({ error: "Not found" }, 404, origin);
+    return json({ error: "Not found" }, 404);
   }
 
   const now = Date.now();
@@ -544,15 +533,15 @@ async function handlePray(env, member, id, origin) {
     totalPrayers: toInt(counts?.total_prayers),
     hasViewerPrayed: true,
     alreadyPrayed: Boolean(existing),
-  }, 200, origin);
+  });
 }
 
-async function handleCreateRequest(request, env, member, origin) {
+async function handleCreateRequest(request, env, member) {
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "Invalid JSON body" }, 400, origin);
+    return json({ error: "Invalid JSON body" }, 400);
   }
 
   const title = cleanText(body?.title, TITLE_MAX);
@@ -560,8 +549,8 @@ async function handleCreateRequest(request, env, member, origin) {
   const category = VALID_CATEGORIES.has(body?.category) ? body.category : "general";
   const isAnonymous = body?.isAnonymous ? 1 : 0;
 
-  if (!title) return json({ error: "Please add a short title." }, 400, origin);
-  if (!text) return json({ error: "Please add a few words about your request." }, 400, origin);
+  if (!title) return json({ error: "Please add a short title." }, 400);
+  if (!text) return json({ error: "Please add a few words about your request." }, 400);
 
   const now = Date.now();
   const result = await env.DB.prepare(`
@@ -570,24 +559,24 @@ async function handleCreateRequest(request, env, member, origin) {
   `).bind(member.id, title, text, category, isAnonymous, now).run();
 
   const id = result.meta?.last_row_id;
-  return handleRequestDetail(env, member, id, origin);
+  return handleRequestDetail(env, member, id);
 }
 
-async function handleAddUpdate(request, env, member, id, origin) {
+async function handleAddUpdate(request, env, member, id) {
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "Invalid JSON body" }, 400, origin);
+    return json({ error: "Invalid JSON body" }, 400);
   }
 
   const text = cleanText(body?.body, UPDATE_MAX);
-  if (!text) return json({ error: "Please write something to share." }, 400, origin);
+  if (!text) return json({ error: "Please write something to share." }, 400);
 
   const req = await env.DB.prepare(`SELECT id, status FROM requests WHERE id = ?`)
     .bind(id).first();
   if (!req || req.status === "archived") {
-    return json({ error: "Not found" }, 404, origin);
+    return json({ error: "Not found" }, 404);
   }
 
   await env.DB.prepare(`
@@ -595,15 +584,15 @@ async function handleAddUpdate(request, env, member, id, origin) {
     VALUES (?, ?, ?, ?)
   `).bind(id, member.id, text, Date.now()).run();
 
-  return handleRequestDetail(env, member, id, origin);
+  return handleRequestDetail(env, member, id);
 }
 
-async function handleAnswer(request, env, member, id, origin) {
+async function handleAnswer(request, env, member, id) {
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "Invalid JSON body" }, 400, origin);
+    return json({ error: "Invalid JSON body" }, 400);
   }
 
   const note = cleanText(body?.answerNote, ANSWER_MAX);
@@ -611,10 +600,10 @@ async function handleAnswer(request, env, member, id, origin) {
   const req = await env.DB.prepare(`SELECT id, author_id, status FROM requests WHERE id = ?`)
     .bind(id).first();
   if (!req || req.status === "archived") {
-    return json({ error: "Not found" }, 404, origin);
+    return json({ error: "Not found" }, 404);
   }
   if (!canModerate(member, req)) {
-    return json({ error: "Only the author can mark this answered." }, 403, origin);
+    return json({ error: "Only the author can mark this answered." }, 403);
   }
 
   await env.DB.prepare(`
@@ -623,23 +612,23 @@ async function handleAnswer(request, env, member, id, origin) {
     WHERE id = ?
   `).bind(Date.now(), note || null, id).run();
 
-  return handleRequestDetail(env, member, id, origin);
+  return handleRequestDetail(env, member, id);
 }
 
-async function handleArchive(env, member, id, origin) {
+async function handleArchive(env, member, id) {
   const req = await env.DB.prepare(`SELECT id, author_id, status FROM requests WHERE id = ?`)
     .bind(id).first();
   if (!req) {
-    return json({ error: "Not found" }, 404, origin);
+    return json({ error: "Not found" }, 404);
   }
   if (!canModerate(member, req)) {
-    return json({ error: "Only the author can archive this." }, 403, origin);
+    return json({ error: "Only the author can archive this." }, 403);
   }
 
   await env.DB.prepare(`UPDATE requests SET status = 'archived' WHERE id = ?`)
     .bind(id).run();
 
-  return json({ ok: true, archived: true }, 200, origin);
+  return json({ ok: true, archived: true });
 }
 
 // Author-only for now; admins (role='admin') are honored too so moderation can
@@ -756,23 +745,12 @@ function b64urlDecode(b64url) {
   return new TextDecoder().decode(bytes);
 }
 
-function corsHeaders(origin) {
-  const allow = ALLOWED_ORIGINS.has(origin) ? origin : "https://justinswain.dev";
-  return {
-    "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Vary": "Origin",
-  };
-}
-
-function json(data, status = 200, origin = null) {
+function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
-      ...corsHeaders(origin),
     },
   });
 }
