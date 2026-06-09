@@ -26,7 +26,7 @@ knowledge assumed - just follow the recipes.
 A quick way to run any SQL against the live database:
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "SQL GOES HERE;"
+npx wrangler d1 execute cenacle_db --remote --command "SQL GOES HERE;"
 ```
 
 That single command is the workhorse for most tasks below.
@@ -82,7 +82,7 @@ Admins can see the Stats panel and remove anyone's post.
 ### See the current members
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "SELECT id, name, role, joined_at, last_seen_at FROM members ORDER BY name;"
+npx wrangler d1 execute cenacle_db --remote --command "SELECT id, name, role, joined_at, last_seen_at FROM members ORDER BY name;"
 ```
 
 `id` is the number you'll use in other commands. `last_seen_at` (and
@@ -92,7 +92,7 @@ they've never logged in yet.
 ### Make someone an admin (or take it away)
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "UPDATE members SET role = 'admin' WHERE name = 'Alice';"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET role = 'admin' WHERE name = 'Alice';"
 ```
 
 Demote back to a regular member by setting `role = 'member'`.
@@ -100,7 +100,7 @@ Demote back to a regular member by setting `role = 'member'`.
 ### Rename a member
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "UPDATE members SET name = 'Alice Smith' WHERE id = 5;"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET name = 'Alice Smith' WHERE id = 5;"
 ```
 
 (Use `id` if two people share a first name.)
@@ -126,7 +126,7 @@ store its hash, and bump their `token_version` so the old code stops working.
    shown):
 
    ```
-   npx wrangler d1 execute prayer_app --remote --command "UPDATE members SET token_hash = 'PASTE_HASH_HERE', token_version = token_version + 1 WHERE name = 'Alice';"
+   npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET token_hash = 'PASTE_HASH_HERE', token_version = token_version + 1 WHERE name = 'Alice';"
    ```
 
 3. Send them their new link (use your own deploy URL):
@@ -138,14 +138,14 @@ Bumping `token_version` invalidates every device they're currently logged in
 on. Their old code also stops minting new sessions until you reissue one.
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "UPDATE members SET token_version = token_version + 1 WHERE name = 'Alice';"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET token_version = token_version + 1 WHERE name = 'Alice';"
 ```
 
 To lock them out *and* make sure their code can never be used again, also
 overwrite the hash with garbage:
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "UPDATE members SET token_version = token_version + 1, token_hash = 'revoked-' || id WHERE name = 'Alice';"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET token_version = token_version + 1, token_hash = 'revoked-' || id WHERE name = 'Alice';"
 ```
 
 ### Log *everyone* out at once
@@ -171,7 +171,7 @@ commands here are for when you'd rather work from your computer.
 ### Find a post's ID
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "SELECT id, author_id, title, status, created_at FROM requests ORDER BY created_at DESC LIMIT 20;"
+npx wrangler d1 execute cenacle_db --remote --command "SELECT id, author_id, title, status, created_at FROM requests ORDER BY created_at DESC LIMIT 20;"
 ```
 
 ### Remove a junk / spam / accidental post
@@ -180,7 +180,7 @@ npx wrangler d1 execute prayer_app --remote --command "SELECT id, author_id, tit
 and stats. Nothing is truly deleted, so it's reversible.
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "UPDATE requests SET status = 'archived' WHERE id = 42;"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE requests SET status = 'archived' WHERE id = 42;"
 ```
 
 ### Restore a post you removed by mistake
@@ -188,13 +188,13 @@ npx wrangler d1 execute prayer_app --remote --command "UPDATE requests SET statu
 Put it back as `open` (or `answered` if it had been answered):
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "UPDATE requests SET status = 'open' WHERE id = 42;"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE requests SET status = 'open' WHERE id = 42;"
 ```
 
 ### See removed posts
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "SELECT id, title, status FROM requests WHERE status = 'archived';"
+npx wrangler d1 execute cenacle_db --remote --command "SELECT id, title, status FROM requests WHERE status = 'archived';"
 ```
 
 ---
@@ -207,25 +207,25 @@ Export the whole live database to a file before any big change. Keep these
 somewhere safe - this is your "remember what God did" archive too.
 
 ```
-npx wrangler d1 export prayer_app --remote --output "prayer-backup-2026-06-09.sql"
+npx wrangler d1 export cenacle_db --remote --output "cenacle-backup-2026-06-09.sql"
 ```
 
 To restore into a fresh/local database if ever needed:
 
 ```
-npx wrangler d1 execute prayer_app --local --file "prayer-backup-2026-06-09.sql"
+npx wrangler d1 execute cenacle_db --local --file "cenacle-backup-2026-06-09.sql"
 ```
 
 ### Quick health check (counts)
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "SELECT (SELECT COUNT(*) FROM members) AS members, (SELECT COUNT(*) FROM requests WHERE status='open') AS open, (SELECT COUNT(*) FROM requests WHERE status='answered') AS answered, (SELECT COUNT(*) FROM prayers) AS prayers;"
+npx wrangler d1 execute cenacle_db --remote --command "SELECT (SELECT COUNT(*) FROM members) AS members, (SELECT COUNT(*) FROM requests WHERE status='open') AS open, (SELECT COUNT(*) FROM requests WHERE status='answered') AS answered, (SELECT COUNT(*) FROM prayers) AS prayers;"
 ```
 
 ### Year-end review (answered prayers this year)
 
 ```
-npx wrangler d1 execute prayer_app --remote --command "SELECT title, answer_note, datetime(answered_at/1000,'unixepoch') AS answered_on FROM requests WHERE status='answered' AND answered_at >= strftime('%s','2026-01-01')*1000 ORDER BY answered_at;"
+npx wrangler d1 execute cenacle_db --remote --command "SELECT title, answer_note, datetime(answered_at/1000,'unixepoch') AS answered_on FROM requests WHERE status='answered' AND answered_at >= strftime('%s','2026-01-01')*1000 ORDER BY answered_at;"
 ```
 
 (The **Answered** tab in the app shows the same thing more nicely - this is for
@@ -254,7 +254,7 @@ npm run deploy
 | Log everyone out | terminal | `wrangler secret put SESSION_SECRET` |
 | Remove a junk post | **app** | open post -> **Remove post** |
 | Restore a post | terminal | `UPDATE requests SET status='open' ...` |
-| Back up everything | terminal | `wrangler d1 export prayer_app --remote --output ...` |
+| Back up everything | terminal | `wrangler d1 export cenacle_db --remote --output ...` |
 | Deploy code changes | terminal | `npm run deploy` |
 
 ---

@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "prayer-api",
+	"name": "cenacle",
 	"main": "src/index.js",
 	"compatibility_date": "2026-05-27",
 	"observability": {
@@ -41,14 +41,14 @@
 		]
 	},
 	/**
-	 * D1 binding. Run `wrangler d1 create prayer_app` and paste the printed
+	 * D1 binding. Run `wrangler d1 create cenacle_db` and paste the printed
 	 * database_id here before first deploy. See README.md.
 	 */
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "prayer_app",
-			"database_id": "de62e54c-a380-4063-bb35-7a746be6cdf0"
+			"database_name": "cenacle_db",
+			"database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 		},
 	]
 	/**

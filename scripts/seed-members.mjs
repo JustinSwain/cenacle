@@ -29,7 +29,7 @@ import { join } from "node:path";
 
 // Must match `database_name` in wrangler.jsonc. Override per-run with --db or
 // the D1_DATABASE env var if you renamed the database.
-const DB_NAME = "prayer_app";
+const DB_NAME = "cenacle_db";
 
 const URL_PLACEHOLDER = "<your-app-url>";
 

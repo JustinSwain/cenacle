@@ -2,10 +2,10 @@
    request detail with updates thread and author-only mark-answered/archive. */
 
 const API_BASE = "/api";
-const SESSION_KEY = "prayer_session_v1";
-const ONBOARDED_KEY = "prayer_onboarded_v1";
-const THEME_KEY = "prayer_theme_v1";
-const FEED_CACHE_KEY = "prayer_feed_v1";
+const SESSION_KEY = "cenacle_session_v1";
+const ONBOARDED_KEY = "cenacle_onboarded_v1";
+const THEME_KEY = "cenacle_theme_v1";
+const FEED_CACHE_KEY = "cenacle_feed_v1";
 
 // Branding injected by the Worker (window.__CONFIG__). Falls back to "Prayer"
 // when the page is served as a raw static asset without the Worker.

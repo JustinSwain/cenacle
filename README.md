@@ -50,12 +50,12 @@ tier is plenty) and [Node.js](https://nodejs.org/) installed.
 2. **Create your database** and paste the printed `database_id` into
    `wrangler.jsonc` (replacing the existing one):
    ```
-   npx wrangler d1 create prayer_app
+   npx wrangler d1 create cenacle_db
    ```
 
 3. **Apply the schema:**
    ```
-   npx wrangler d1 migrations apply prayer_app --remote
+   npx wrangler d1 migrations apply cenacle_db --remote
    ```
 
 4. **Set the session secret** (any long random string; it's never committed):
@@ -111,7 +111,7 @@ config changes need a redeploy.)
 
 ```
 cp .dev.vars.example .dev.vars              # then set SESSION_SECRET
-npx wrangler d1 migrations apply prayer_app --local
+npx wrangler d1 migrations apply cenacle_db --local
 node scripts/seed-members.mjs --admin "You" # prints a local invite link
 npm run dev
 ```

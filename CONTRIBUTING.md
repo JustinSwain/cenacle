@@ -30,7 +30,7 @@ You need Node and a Cloudflare account (the free tier is fine for dev).
 ```
 npm install
 cp .dev.vars.example .dev.vars          # then edit SESSION_SECRET
-npx wrangler d1 migrations apply prayer_app --local
+npx wrangler d1 migrations apply cenacle_db --local
 node scripts/seed-members.mjs --admin "You"   # prints a local invite link
 npm run dev
 ```
