@@ -1,6 +1,6 @@
-# Prayer App - Admin Guide
+# Cenacle - Admin Guide
 
-Everyday backend tasks for running the group's prayer app. No prior Cloudflare
+Everyday backend tasks for running your group's prayer app. No prior Cloudflare
 knowledge assumed - just follow the recipes.
 
 > **There are no passwords.** Each person logs in with a personal invite code
@@ -11,8 +11,9 @@ knowledge assumed - just follow the recipes.
 
 ## Before you start
 
-- Run every command **from this folder**: `_workers/prayer-api/`.
-- You're on Windows PowerShell. The commands below work as written there.
+- Run every command **from the repo root** (the folder with `wrangler.jsonc`).
+- Commands use `npx wrangler ...` and work the same on macOS, Linux, and
+  Windows (PowerShell or WSL). Where a path or quote differs, it's noted.
 - Two databases exist:
   - `--local` = a throwaway copy on your PC for testing. Safe to break.
   - `--remote` = the **real, live database your group uses.** Changes here are
@@ -40,20 +41,28 @@ Generates a code, prints a ready-to-share link, and stores only the *hash* of
 the code (the raw code is never saved - copy it when it prints).
 
 ```
-node seed-members.mjs --remote "Firstname Lastname"
+node scripts/seed-members.mjs --remote "Firstname Lastname"
 ```
 
 Add several at once:
 
 ```
-node seed-members.mjs --remote "Alice" "Bob" "Carol"
+node scripts/seed-members.mjs --remote "Alice" "Bob" "Carol"
 ```
 
 It prints something like:
 
 ```
-Alice: https://justinswain.dev/p/prayer/?code=maple-4821
+Alice: https://your-group.example.workers.dev/?code=maple-4821
     code: maple-4821
+```
+
+The link's base comes from `--url <your-deploy-url>` or the `APP_URL`
+environment variable; without either it prints a `<your-app-url>` placeholder
+for you to fill in. Set it once so the links are ready to share:
+
+```
+node scripts/seed-members.mjs --remote --url https://your-group.example.workers.dev "Alice"
 ```
 
 Send each person their own link. Tapping it logs them in and (on phones) they
@@ -65,7 +74,7 @@ Names listed after `--admin` (up to a `--` separator) become admins; names
 after `--` are regular members:
 
 ```
-node seed-members.mjs --remote --admin "Newadmin" -- "Regularmember"
+node scripts/seed-members.mjs --remote --admin "Newadmin" -- "Regularmember"
 ```
 
 Admins can see the Stats panel and remove anyone's post.
@@ -120,8 +129,8 @@ store its hash, and bump their `token_version` so the old code stops working.
    npx wrangler d1 execute prayer_app --remote --command "UPDATE members SET token_hash = 'PASTE_HASH_HERE', token_version = token_version + 1 WHERE name = 'Alice';"
    ```
 
-3. Send them their new link:
-   `https://justinswain.dev/p/prayer/?code=river-5093`
+3. Send them their new link (use your own deploy URL):
+   `https://your-group.example.workers.dev/?code=river-5093`
 
 ### Lock someone out immediately (revoke access)
 
@@ -236,8 +245,8 @@ npm run deploy
 
 | I want to... | Where | How |
 |---|---|---|
-| Add a member | terminal | `node seed-members.mjs --remote "Name"` |
-| Add an admin | terminal | `node seed-members.mjs --remote --admin "Name"` |
+| Add a member | terminal | `node scripts/seed-members.mjs --remote "Name"` |
+| Add an admin | terminal | `node scripts/seed-members.mjs --remote --admin "Name"` |
 | List members | terminal | `SELECT ... FROM members` |
 | Make someone admin | terminal | `UPDATE members SET role='admin' ...` |
 | Give a new code | terminal | hash new code -> `UPDATE ... token_hash, token_version+1` |
