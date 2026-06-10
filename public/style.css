@@ -485,12 +485,6 @@ button {
     border-top: 1px solid var(--border);
 }
 
-.card-cat {
-    font-size: 1.6rem;
-    line-height: 1.2;
-    flex: 0 0 auto;
-}
-
 .card-title {
     font-family: var(--font-head);
     font-weight: 600;
@@ -542,7 +536,11 @@ button {
 
 .pray-btn[data-prayed="1"] {
     background: var(--primary-soft-bg);
-    color: var(--primary-ink);
+    /* Use the theme foreground, not --primary-ink: the latter is a dark ink
+       meant for the bright --primary fill, but here the background is the soft
+       tint, which is dark in dark mode -> dark-on-dark. --text always contrasts
+       the surface in both light and dark. */
+    color: var(--text);
     border: 2px solid var(--primary-soft-border);
 }
 

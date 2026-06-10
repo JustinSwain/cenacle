@@ -20,7 +20,7 @@ const CATEGORIES = [
   { value: "spiritual", label: "Spiritual", emoji: "\u{2728}" },
   { value: "praise", label: "Praise", emoji: "\u{1F389}" },
 ];
-const CATEGORY_EMOJI = Object.fromEntries(CATEGORIES.map((c) => [c.value, c.emoji]));
+const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.value, c.label]));
 
 const state = {
   token: null,
@@ -180,8 +180,8 @@ function formatDate(epochMs) {
   return new Date(epochMs).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function categoryEmoji(cat) {
-  return CATEGORY_EMOJI[cat] || CATEGORY_EMOJI.general;
+function categoryLabel(cat) {
+  return CATEGORY_LABEL[cat] || CATEGORY_LABEL.general;
 }
 
 function prayerCountLabel(n, isOwn) {
@@ -339,20 +339,22 @@ function renderCard(req) {
   li.dataset.id = req.id;
 
   const head = elem("div", "card-head");
-  const cat = elem("span", "card-cat", categoryEmoji(req.category));
-  cat.title = req.category;
-  head.appendChild(cat);
   head.appendChild(elem("h2", "card-title", req.title));
   const chevron = elem("span", "card-chevron", "›");
   chevron.setAttribute("aria-hidden", "true");
   head.appendChild(chevron);
   li.appendChild(head);
 
-  const cardMeta = `${req.author} - ${formatDate(req.createdAt)}`;
+  // Category shown as quiet text, and only when it adds information ("General"
+  // is the default, so we omit it to keep most cards uncluttered).
+  const parts = [];
+  if (req.category && req.category !== "general") parts.push(categoryLabel(req.category));
+  parts.push(req.author, formatDate(req.createdAt));
+  const cardMeta = parts.join(" - ");
   li.appendChild(elem("p", "card-meta", req.editedAt ? `${cardMeta} (edited)` : cardMeta));
 
   if (req.status === "answered") {
-    const badge = elem("p", "answered-badge", "\u{1F389} Answered");
+    const badge = elem("p", "answered-badge", "Answered");
     li.appendChild(badge);
     if (req.answerNote) {
       li.appendChild(elem("blockquote", "answer-note", req.answerNote));
@@ -534,7 +536,7 @@ function openRequestForm({ heading, submitLabel, initial, onSubmit }) {
     const select = elem("select", "field-input");
     select.name = "category";
     for (const c of CATEGORIES) {
-      const opt = elem("option", null, `${c.emoji} ${c.label}`);
+      const opt = elem("option", null, c.label);
       opt.value = c.value;
       select.appendChild(opt);
     }
@@ -646,12 +648,12 @@ function renderDetail(req) {
   openModal((modal) => {
     modalHeader(modal, req.title);
 
-    const metaText = `${categoryEmoji(req.category)} ${req.category} - ${req.author} - ${formatDate(req.createdAt)}`;
+    const metaText = `${categoryLabel(req.category)} - ${req.author} - ${formatDate(req.createdAt)}`;
     const meta = elem("p", "detail-meta", req.editedAt ? `${metaText} (edited)` : metaText);
     modal.appendChild(meta);
 
     if (req.status === "answered") {
-      modal.appendChild(elem("p", "answered-badge", "\u{1F389} Answered"));
+      modal.appendChild(elem("p", "answered-badge", "Answered"));
     }
 
     modal.appendChild(elem("p", "detail-body", req.body));
@@ -660,7 +662,7 @@ function renderDetail(req) {
     // Archived posts are never shown here, so isMine is the only gate needed.
     if (req.isMine) {
       const editRow = elem("div", "detail-edit-row");
-      const editBtn = elem("button", "btn-secondary btn-small", "✏️ Edit");
+      const editBtn = elem("button", "btn-secondary btn-small", "Edit");
       editBtn.type = "button";
       editBtn.addEventListener("click", () => openEditForm(req));
       editRow.appendChild(editBtn);
@@ -838,7 +840,7 @@ function renderAuthorActions(req) {
   confirm.type = "submit";
   answerForm.appendChild(confirm);
 
-  const answerBtn = elem("button", "btn-secondary", "✅ Mark answered");
+  const answerBtn = elem("button", "btn-secondary", "Mark answered");
   answerBtn.type = "button";
   answerBtn.addEventListener("click", () => {
     answerForm.hidden = false;
@@ -984,7 +986,7 @@ function addToHomeBlock() {
   if (lastCode) wrap.appendChild(codeCopyBlock(lastCode));
 
   const ios = elem("div", "home-steps");
-  ios.appendChild(elem("h4", "home-os", "\u{1F4F1} iPhone or iPad (Safari)"));
+  ios.appendChild(elem("h4", "home-os", "iPhone or iPad (Safari)"));
   const iosOl = elem("ol", "info-list");
   iosOl.appendChild(elem("li", null, "Tap the Share button (the square with an up arrow)."));
   iosOl.appendChild(elem("li", null, "Scroll down and tap Add to Home Screen."));
@@ -995,7 +997,7 @@ function addToHomeBlock() {
   wrap.appendChild(ios);
 
   const android = elem("div", "home-steps");
-  android.appendChild(elem("h4", "home-os", "\u{1F4F1} Android (Chrome)"));
+  android.appendChild(elem("h4", "home-os", "Android (Chrome)"));
   const andOl = elem("ol", "info-list");
   andOl.appendChild(elem("li", null, "Tap the menu (three dots, top right)."));
   andOl.appendChild(elem("li", null, "Tap Add to Home screen (or Install app)."));
@@ -1226,7 +1228,7 @@ function buildAdminStats(a) {
     const sorted = [...cats].sort((x, y) => toCount(y.count) - toCount(x.count));
     for (const c of sorted) {
       const li = elem("li", "stats-cat");
-      li.appendChild(elem("span", "stats-cat-name", `${categoryEmoji(c.category)} ${c.category}`));
+      li.appendChild(elem("span", "stats-cat-name", categoryLabel(c.category)));
       li.appendChild(elem("span", "stats-cat-count", String(toCount(c.count))));
       list.appendChild(li);
     }
