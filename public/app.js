@@ -86,10 +86,16 @@ function isNetworkError(err) {
   return err && err.status === undefined;
 }
 
+// Held in memory for this page only (never persisted) so the onboarding flow
+// can show the member their code to copy into the installed app the first time
+// they open it. Cleared on reload.
+let lastCode = null;
+
 async function redeemCode(code) {
   const data = await api("/session", { method: "POST", body: { code }, auth: false });
   state.token = data.token;
   state.member = data.member;
+  lastCode = code;
   saveSession({ token: data.token, member: data.member });
   return data.member;
 }
@@ -112,6 +118,7 @@ const el = {
   gateError: document.getElementById("gate-error"),
   shell: document.getElementById("shell"),
   gateTitle: document.querySelector(".gate-title"),
+  gateLead: document.getElementById("gate-lead"),
   shellTitle: document.querySelector(".shell-title"),
   who: document.getElementById("who"),
   feed: document.getElementById("feed"),
@@ -814,11 +821,24 @@ function markOnboarded() {
   try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* ignore */ }
 }
 
+// True when running as an installed app (iOS adds it to the home screen;
+// Android/desktop install it). iOS gives the installed app a SEPARATE storage
+// jar from Safari, so the session and the "onboarded" flag never carry over.
+function isStandalone() {
+  return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+         window.navigator.standalone === true;
+}
+
 // Show the welcome flow once per device. Mark onboarded up front so skipping
 // (Escape / backdrop / close) does not make it reappear on the next open.
 function maybeShowOnboarding() {
   if (isOnboarded()) return;
   markOnboarded();
+  // In the installed app the person has already seen this flow in the browser
+  // before adding it to their home screen. iOS replays it only because the app
+  // has its own empty storage; skip it so opening the app doesn't feel like
+  // "starting over".
+  if (isStandalone()) return;
   openOnboarding();
 }
 
@@ -846,10 +866,49 @@ function screenshotSlot(src, altText) {
   return img;
 }
 
+// Shows the member's code with a one-tap Copy button so they can paste it into
+// the installed app on first launch. The code is the only credential, so it is
+// shown only inside the authenticated onboarding flow, never on the public gate.
+function codeCopyBlock(code) {
+  const box = elem("div", "code-copy");
+  box.appendChild(elem("span", "code-copy-label", "Your code"));
+  const value = elem("code", "code-copy-value", code);
+  box.appendChild(value);
+  const btn = elem("button", "btn-secondary code-copy-btn", "Copy");
+  btn.type = "button";
+  btn.addEventListener("click", async () => {
+    let ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(code);
+        ok = true;
+      }
+    } catch { /* fall through to selection fallback */ }
+    if (!ok) {
+      const range = document.createRange();
+      range.selectNodeContents(value);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      try { ok = document.execCommand("copy"); } catch { ok = false; }
+      sel.removeAllRanges();
+    }
+    btn.textContent = ok ? "Copied" : "Select and copy";
+    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+  });
+  box.appendChild(btn);
+  return box;
+}
+
 function addToHomeBlock() {
   const wrap = elem("div", "home-help");
   wrap.appendChild(elem("p", "info-lead",
-    `Add ${GROUP_NAME} to your home screen so you can open it in one tap, always signed in.`));
+    `Add ${GROUP_NAME} to your home screen so you can open it in one tap.`));
+  wrap.appendChild(elem("p", "info-note",
+    "On iPhone the home-screen app asks for your code the first time you open " +
+    "it. Copy your code now, then paste it once there — after that you'll " +
+    "stay signed in."));
+  if (lastCode) wrap.appendChild(codeCopyBlock(lastCode));
 
   const ios = elem("div", "home-steps");
   ios.appendChild(elem("h4", "home-os", "\u{1F4F1} iPhone or iPad (Safari)"));
@@ -1257,6 +1316,15 @@ async function boot() {
     state.member = session.member;
     enterApp();
     return;
+  }
+
+  // Installed app, first launch: its storage starts empty even though Safari is
+  // already signed in (iOS keeps them separate). Reassure the user this is a
+  // one-time step rather than the whole sign-up again.
+  if (isStandalone() && el.gateLead) {
+    el.gateLead.textContent =
+      "Almost there — enter your code once to sign in on this app. " +
+      "After this you'll stay signed in.";
   }
 
   showGate();
