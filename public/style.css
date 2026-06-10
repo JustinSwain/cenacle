@@ -960,6 +960,33 @@ body.modal-open { overflow: hidden; }
 
 .help-btn:hover { border-color: var(--border-strong); color: var(--text); }
 
+/* Refresh: an icon-only variant of .help-btn. */
+.refresh-btn {
+    padding: 6px 12px;
+    line-height: 1;
+}
+.refresh-icon {
+    display: inline-block;
+    font-size: 1.25rem;
+}
+.refresh-btn.is-refreshing .refresh-icon {
+    animation: refresh-spin 0.7s linear infinite;
+}
+@keyframes refresh-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Small button used for inline actions like Edit in the detail view. */
+.btn-small {
+    font-size: 0.95rem;
+    padding: 8px 14px;
+    min-height: 40px;
+}
+
+.detail-edit-row {
+    margin: 0 0 18px;
+}
+
 /* ──────────────────────── tab badges ──────────────────────── */
 
 .tab-badge {
@@ -1128,6 +1155,8 @@ textarea:focus-visible,
     .card:active {
         transform: none;
     }
+
+    .refresh-btn.is-refreshing .refresh-icon { animation: none; }
 
     .card:hover .card-chevron { transform: none; }
 }

@@ -166,6 +166,12 @@ async function dispatch(request, env, path) {
     return withMember(request, env, (member) => handleArchive(env, member, id));
   }
 
+  const editMatch = path.match(/^\/requests\/(\d+)\/edit$/);
+  if (method === "POST" && editMatch) {
+    const id = Number(editMatch[1]);
+    return withMember(request, env, (member) => handleEditRequest(request, env, member, id));
+  }
+
   const detailMatch = path.match(/^\/requests\/(\d+)$/);
   if (method === "GET" && detailMatch) {
     const id = Number(detailMatch[1]);
@@ -509,7 +515,7 @@ async function handleListRequests(request, env, member) {
   const { results } = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
-      r.is_anonymous, r.created_at, r.answered_at, r.answer_note,
+      r.is_anonymous, r.created_at, r.answered_at, r.answer_note, r.edited_at,
       m.name AS author_name,
       (SELECT COUNT(DISTINCT p.member_id) FROM prayers p WHERE p.request_id = r.id) AS distinct_prayers,
       (SELECT COUNT(*)                    FROM prayers p WHERE p.request_id = r.id) AS total_prayers,
@@ -529,7 +535,7 @@ async function handleRequestDetail(env, member, id) {
   const row = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
-      r.is_anonymous, r.created_at, r.answered_at, r.answer_note,
+      r.is_anonymous, r.created_at, r.answered_at, r.answer_note, r.edited_at,
       m.name AS author_name,
       (SELECT COUNT(DISTINCT p.member_id) FROM prayers p WHERE p.request_id = r.id) AS distinct_prayers,
       (SELECT COUNT(*)                    FROM prayers p WHERE p.request_id = r.id) AS total_prayers,
@@ -666,6 +672,43 @@ async function handleAddUpdate(request, env, member, id) {
   return handleRequestDetail(env, member, id);
 }
 
+// Author-only (admins too) edit of a request's title/body/category/anonymity.
+// Stamps edited_at so the UI can show the post was revised. Prayers and updates
+// are untouched; archived requests cannot be edited.
+async function handleEditRequest(request, env, member, id) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const title = cleanText(body?.title, TITLE_MAX);
+  const text = cleanText(body?.body, BODY_MAX);
+  const category = VALID_CATEGORIES.has(body?.category) ? body.category : "general";
+  const isAnonymous = body?.isAnonymous ? 1 : 0;
+
+  if (!title) return json({ error: "Please add a short title." }, 400);
+  if (!text) return json({ error: "Please add a few words about your request." }, 400);
+
+  const req = await env.DB.prepare(`SELECT id, author_id, status FROM requests WHERE id = ?`)
+    .bind(id).first();
+  if (!req || req.status === "archived") {
+    return json({ error: "Not found" }, 404);
+  }
+  if (!canModerate(member, req)) {
+    return json({ error: "Only the author can edit this." }, 403);
+  }
+
+  await env.DB.prepare(`
+    UPDATE requests
+    SET title = ?, body = ?, category = ?, is_anonymous = ?, edited_at = ?
+    WHERE id = ?
+  `).bind(title, text, category, isAnonymous, Date.now(), id).run();
+
+  return handleRequestDetail(env, member, id);
+}
+
 async function handleAnswer(request, env, member, id) {
   let body;
   try {
@@ -732,6 +775,7 @@ function serializeCard(row, member) {
     status: row.status,
     isAnonymous: isAnon,
     createdAt: toInt(row.created_at),
+    editedAt: row.edited_at != null ? toInt(row.edited_at) : null,
     answeredAt: row.answered_at != null ? toInt(row.answered_at) : null,
     answerNote: row.answer_note != null ? String(row.answer_note) : null,
     distinctPrayers: toInt(row.distinct_prayers),

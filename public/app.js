@@ -126,6 +126,7 @@ const el = {
   tabs: Array.from(document.querySelectorAll(".tab")),
   helpBtn: document.getElementById("help-btn"),
   statsBtn: document.getElementById("stats-btn"),
+  refreshBtn: document.getElementById("refresh-btn"),
   summary: document.getElementById("summary"),
   themeToggle: document.getElementById("theme-toggle"),
   newBtn: document.getElementById("new-request-btn"),
@@ -271,6 +272,29 @@ async function loadFeed() {
   }
 }
 
+// Manual + on-foreground refresh. iOS home-screen apps have no pull-to-refresh
+// and stay "frozen" on the last view when reopened, so this is how members pull
+// in new requests during a meeting. Deliberately NOT a background poll: it only
+// fires on an explicit tap or when the app returns to the foreground, so it
+// never hammers the Worker/D1 while idle. A short rate-limit guards against
+// focus + visibility events both firing on the same reopen.
+let refreshing = false;
+let lastRefreshAt = 0;
+
+async function refreshAll({ force = false } = {}) {
+  if (refreshing) return;
+  if (!force && Date.now() - lastRefreshAt < 4000) return;
+  refreshing = true;
+  lastRefreshAt = Date.now();
+  if (el.refreshBtn) el.refreshBtn.classList.add("is-refreshing");
+  try {
+    await Promise.all([loadFeed(), refreshBadges(), loadStats()]);
+  } finally {
+    refreshing = false;
+    if (el.refreshBtn) el.refreshBtn.classList.remove("is-refreshing");
+  }
+}
+
 function readFeedCache(tab) {
   try {
     const all = JSON.parse(localStorage.getItem(FEED_CACHE_KEY) || "{}");
@@ -324,7 +348,8 @@ function renderCard(req) {
   head.appendChild(chevron);
   li.appendChild(head);
 
-  li.appendChild(elem("p", "card-meta", `${req.author} - ${formatDate(req.createdAt)}`));
+  const cardMeta = `${req.author} - ${formatDate(req.createdAt)}`;
+  li.appendChild(elem("p", "card-meta", req.editedAt ? `${cardMeta} (edited)` : cardMeta));
 
   if (req.status === "answered") {
     const badge = elem("p", "answered-badge", "\u{1F389} Answered");
@@ -466,8 +491,25 @@ function modalHeader(parent, titleText) {
 // ─────────────────────────── create request ───────────────────────────
 
 function openCreateForm() {
+  openRequestForm({
+    heading: "Share a request",
+    submitLabel: "Share",
+    onSubmit: async (payload) => {
+      await api("/requests", { method: "POST", body: payload });
+      closeModal();
+      setActiveTab("open");
+      await loadFeed();
+    },
+  });
+}
+
+// Reused by both "Share a request" and "Edit request". `initial` prefills the
+// fields (used for editing); `onSubmit` receives the validated payload and is
+// responsible for the API call and closing/refreshing.
+function openRequestForm({ heading, submitLabel, initial, onSubmit }) {
+  const init = initial || {};
   openModal((modal) => {
-    modalHeader(modal, "Share a request");
+    modalHeader(modal, heading);
 
     const form = elem("form", "req-form");
 
@@ -477,6 +519,7 @@ function openCreateForm() {
     titleField.maxLength = 120;
     titleField.placeholder = "Short title";
     titleField.required = true;
+    if (init.title) titleField.value = init.title;
     form.appendChild(labeled("Title", titleField));
 
     const bodyField = elem("textarea", "field-input field-textarea");
@@ -485,6 +528,7 @@ function openCreateForm() {
     bodyField.rows = 5;
     bodyField.placeholder = "Share as much or as little as you like.";
     bodyField.required = true;
+    if (init.body) bodyField.value = init.body;
     form.appendChild(labeled("Request", bodyField));
 
     const select = elem("select", "field-input");
@@ -494,12 +538,14 @@ function openCreateForm() {
       opt.value = c.value;
       select.appendChild(opt);
     }
+    if (init.category) select.value = init.category;
     form.appendChild(labeled("Category", select));
 
     const anonWrap = elem("label", "checkbox-row");
     const anon = document.createElement("input");
     anon.type = "checkbox";
     anon.name = "anonymous";
+    if (init.isAnonymous) anon.checked = true;
     anonWrap.appendChild(anon);
     anonWrap.appendChild(text(" Post anonymously (your name is hidden from the group)"));
     form.appendChild(anonWrap);
@@ -509,7 +555,7 @@ function openCreateForm() {
     form.appendChild(errLine);
 
     const actions = elem("div", "modal-actions");
-    const submit = elem("button", "btn-primary", "Share");
+    const submit = elem("button", "btn-primary", submitLabel);
     submit.type = "submit";
     const cancel = elem("button", "btn-secondary", "Cancel");
     cancel.type = "button";
@@ -532,20 +578,36 @@ function openCreateForm() {
       }
       submit.disabled = true;
       try {
-        await api("/requests", { method: "POST", body: payload });
-        closeModal();
-        setActiveTab("open");
-        await loadFeed();
+        await onSubmit(payload);
       } catch (err) {
         if (err.status === 401) { closeModal(); return handleExpiredSession(); }
         showFormError(errLine, isNetworkError(err)
           ? "Could not connect. Try again."
-          : (err.message || "Could not share that. Try again."));
+          : (err.message || "Could not save that. Try again."));
         submit.disabled = false;
       }
     });
 
     modal.appendChild(form);
+  });
+}
+
+function openEditForm(req) {
+  openRequestForm({
+    heading: "Edit request",
+    submitLabel: "Save changes",
+    initial: {
+      title: req.title,
+      body: req.body,
+      category: req.category,
+      isAnonymous: req.isAnonymous,
+    },
+    onSubmit: async (payload) => {
+      const data = await api(`/requests/${req.id}/edit`, { method: "POST", body: payload });
+      renderDetail(data.request);
+      // Refresh the feed so the edited title/snippet updates in the list too.
+      loadFeed();
+    },
   });
 }
 
@@ -584,8 +646,8 @@ function renderDetail(req) {
   openModal((modal) => {
     modalHeader(modal, req.title);
 
-    const meta = elem("p", "detail-meta",
-      `${categoryEmoji(req.category)} ${req.category} - ${req.author} - ${formatDate(req.createdAt)}`);
+    const metaText = `${categoryEmoji(req.category)} ${req.category} - ${req.author} - ${formatDate(req.createdAt)}`;
+    const meta = elem("p", "detail-meta", req.editedAt ? `${metaText} (edited)` : metaText);
     modal.appendChild(meta);
 
     if (req.status === "answered") {
@@ -593,6 +655,17 @@ function renderDetail(req) {
     }
 
     modal.appendChild(elem("p", "detail-body", req.body));
+
+    // The author (admins too) can revise their own request after posting.
+    // Archived posts are never shown here, so isMine is the only gate needed.
+    if (req.isMine) {
+      const editRow = elem("div", "detail-edit-row");
+      const editBtn = elem("button", "btn-secondary btn-small", "✏️ Edit");
+      editBtn.type = "button";
+      editBtn.addEventListener("click", () => openEditForm(req));
+      editRow.appendChild(editBtn);
+      modal.appendChild(editRow);
+    }
 
     if (req.status === "answered" && req.answerNote) {
       const t = elem("div", "testimony");
@@ -1284,6 +1357,18 @@ for (const t of el.tabs) {
 el.newBtn.addEventListener("click", openCreateForm);
 el.helpBtn.addEventListener("click", openHelp);
 el.statsBtn.addEventListener("click", openStatsPanel);
+if (el.refreshBtn) el.refreshBtn.addEventListener("click", () => refreshAll({ force: true }));
+
+// Refresh when the app returns to the foreground (the practical "live" trigger
+// for an installed iOS app, since reopening it does not reload the page). Both
+// events can fire on a single reopen; the rate-limit in refreshAll dedupes them.
+function refreshOnForeground() {
+  if (document.visibilityState !== "visible") return;
+  if (!state.token || el.shell.hidden) return;
+  refreshAll();
+}
+document.addEventListener("visibilitychange", refreshOnForeground);
+window.addEventListener("pageshow", refreshOnForeground);
 el.themeToggle.addEventListener("click", () => {
   const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
   setTheme(next);
