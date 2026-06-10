@@ -725,7 +725,7 @@ async function handleAnswer(request, env, member, id) {
     return json({ error: "Not found" }, 404);
   }
   if (!canModerate(member, req)) {
-    return json({ error: "Only the author can mark this answered." }, 403);
+    return json({ error: "Only the author can move this to the Prayer Log." }, 403);
   }
 
   await env.DB.prepare(`

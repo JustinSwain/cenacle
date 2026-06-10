@@ -2,8 +2,8 @@
 
 A private prayer-request board for one small group, self-hosted on your own
 Cloudflare account. Members log in with a personal invite link (no passwords, no
-email), share requests, tap "I prayed" for each other, and celebrate answered
-prayers. Everything runs in a single Cloudflare Worker backed by D1 (SQLite), so
+email), share requests, tap "I prayed" for each other, and keep a Prayer Log of
+where requests land. Everything runs in a single Cloudflare Worker backed by D1 (SQLite), so
 there's one URL, no server to babysit, and the data lives in *your* account, not
 anyone else's.
 
@@ -21,11 +21,12 @@ anyone else's.
 
 - **Per-person invite codes** - each member gets a unique link; no passwords or
   email. Revoke or reissue access in one command.
-- **Open / Answered / Mine feeds** - browse current requests, look back on
-  answered ones, and find your own.
+- **Active / Prayer Log / Mine feeds** - browse current requests, look back on
+  the ones that have closed, and find your own.
 - **"I prayed" taps** - let people know they're being prayed for, with simple
   counts.
-- **Answered wall** - record how a prayer was answered and keep the testimony.
+- **Prayer Log** - move a request out of the active list with a closing note (a
+  final update, praise report, or reason it no longer needs to stay active).
 - **Anonymous requests** - post without your name attached (see the nuance in
   [SECURITY.md](SECURITY.md)).
 - **Updates thread** - add follow-ups to a request over time.

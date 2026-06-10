@@ -1,5 +1,5 @@
-/* Prayer app frontend. Login gate + feed (Open/Answered/Mine), create form,
-   request detail with updates thread and author-only mark-answered/archive. */
+/* Prayer app frontend. Login gate + feed (Active/Prayer Log/Mine), create form,
+   request detail with updates thread and author-only move-to-Prayer-Log/archive. */
 
 const API_BASE = "/api";
 const SESSION_KEY = "cenacle_session_v1";
@@ -328,9 +328,9 @@ function renderFeed(requests) {
 }
 
 function emptyMessage(tab) {
-  if (tab === "answered") return "No answered prayers yet - they will gather here.";
+  if (tab === "answered") return "The Prayer Log is empty for now - closed prayers will gather here.";
   if (tab === "mine") return "You have not shared a request yet.";
-  return "No open requests right now - a quiet week.";
+  return "No active prayers right now - a quiet week.";
 }
 
 function renderCard(req) {
@@ -354,7 +354,7 @@ function renderCard(req) {
   li.appendChild(elem("p", "card-meta", req.editedAt ? `${cardMeta} (edited)` : cardMeta));
 
   if (req.status === "answered") {
-    const badge = elem("p", "answered-badge", "Answered");
+    const badge = elem("p", "answered-badge", "In Prayer Log");
     li.appendChild(badge);
     if (req.answerNote) {
       li.appendChild(elem("blockquote", "answer-note", req.answerNote));
@@ -388,7 +388,7 @@ function renderCard(req) {
 
   const hint = elem("p", "card-hint", req.status === "answered"
     ? "Tap to read the full story"
-    : "Tap to read, comment, or mark answered");
+    : "Tap to read, comment, or move to the Prayer Log");
   li.appendChild(hint);
 
   // Open detail when tapping the card body (but not the pray button).
@@ -653,7 +653,7 @@ function renderDetail(req) {
     modal.appendChild(meta);
 
     if (req.status === "answered") {
-      modal.appendChild(elem("p", "answered-badge", "Answered"));
+      modal.appendChild(elem("p", "answered-badge", "In Prayer Log"));
     }
 
     modal.appendChild(elem("p", "detail-body", req.body));
@@ -671,7 +671,7 @@ function renderDetail(req) {
 
     if (req.status === "answered" && req.answerNote) {
       const t = elem("div", "testimony");
-      t.appendChild(elem("p", "testimony-label", "Testimony"));
+      t.appendChild(elem("p", "testimony-label", "Closing note"));
       t.appendChild(elem("blockquote", "answer-note", req.answerNote));
       modal.appendChild(t);
     }
@@ -828,19 +828,25 @@ function renderUpdateForm(req) {
 function renderAuthorActions(req) {
   const wrap = elem("div", "author-actions");
 
-  // Mark answered reveals a testimony field inline.
+  // "Move to Prayer Log" reveals a closing-note field inline.
   const answerForm = elem("form", "answer-form");
   answerForm.hidden = true;
+  answerForm.appendChild(elem("p", "answer-form-title", "Move to Prayer Log?"));
   const note = elem("textarea", "field-input field-textarea");
+  note.id = "prayer-log-note";
   note.rows = 3;
   note.maxLength = 2000;
-  note.placeholder = "Share how this was answered (optional testimony)...";
+  note.placeholder =
+    "Share a final update, praise report, or reason this prayer no longer needs to remain active.";
+  const noteLabel = elem("label", "answer-form-label", "Add a closing note");
+  noteLabel.htmlFor = note.id;
+  answerForm.appendChild(noteLabel);
   answerForm.appendChild(note);
-  const confirm = elem("button", "btn-primary", "Mark answered");
+  const confirm = elem("button", "btn-primary", "Add to Prayer Log");
   confirm.type = "submit";
   answerForm.appendChild(confirm);
 
-  const answerBtn = elem("button", "btn-secondary", "Mark answered");
+  const answerBtn = elem("button", "btn-secondary", "Move to Prayer Log");
   answerBtn.type = "button";
   answerBtn.addEventListener("click", () => {
     answerForm.hidden = false;
@@ -857,7 +863,7 @@ function renderAuthorActions(req) {
         body: { answerNote: note.value.trim() },
       });
       renderDetail(data.request);
-      // Refresh the underlying feed so the card moves to Answered.
+      // Refresh the underlying feed so the card moves to the Prayer Log.
       loadFeed();
     } catch (err) {
       if (err.status === 401) { closeModal(); return handleExpiredSession(); }
@@ -922,7 +928,7 @@ function howItWorksList() {
   const points = [
     "Share a request and the group can pray over it.",
     "Tap \u{1F64F} I'm praying to let someone know you are lifting them up.",
-    "Post updates, and mark a request answered to share the good news.",
+    "Post updates, and move a request to the Prayer Log to share a closing note.",
     "Your requests, prayers, and updates stay inside this group.",
   ];
   for (const p of points) ul.appendChild(elem("li", null, p));
@@ -1162,15 +1168,17 @@ async function loadStats() {
   el.statsBtn.hidden = !isAdmin;
 }
 
-// Always-visible line: group open/answered plus the viewer's own year totals.
+// Always-visible line: active prayers + Prayer Log count, plus the viewer's
+// own year totals.
 function renderSummary() {
   const s = state.stats;
   if (!s) { el.summary.hidden = true; return; }
   el.summary.replaceChildren();
 
   const pub = s.public || {};
+  const activeN = toCount(pub.open);
   const group = elem("span", "summary-group",
-    `${toCount(pub.open)} open - ${toCount(pub.answered)} answered`);
+    `${activeN} Active ${activeN === 1 ? "Prayer" : "Prayers"}, ${toCount(pub.answered)} in Prayer Log`);
   el.summary.appendChild(group);
 
   const me = s.personal;
@@ -1205,9 +1213,9 @@ function buildAdminStats(a) {
   grid.appendChild(statTile(a.prayersThisWeek, "prayers this week"));
   grid.appendChild(statTile(a.activeThisWeek, "people active this week"));
   grid.appendChild(statTile(a.prayersAllTime, "prayers all time"));
-  grid.appendChild(statTile(`${toCount(a.answeredRate)}%`, "answered rate"));
-  grid.appendChild(statTile(a.open, "open requests"));
-  grid.appendChild(statTile(a.answered, "answered requests"));
+  grid.appendChild(statTile(`${toCount(a.answeredRate)}%`, "logged rate"));
+  grid.appendChild(statTile(a.open, "active requests"));
+  grid.appendChild(statTile(a.answered, "in Prayer Log"));
   wrap.appendChild(grid);
 
   // Weekly prayer trend sparkline (last 8 weeks).
@@ -1242,7 +1250,7 @@ function buildAdminStats(a) {
   section.appendChild(elem("p", "stats-line",
     `Median time to first prayer: ${formatHours(a.medianHoursToFirstPrayer)}`));
   section.appendChild(elem("p", "stats-line",
-    `Median time to answered: ${formatHours(a.medianHoursToAnswered)}`));
+    `Median time to Prayer Log: ${formatHours(a.medianHoursToAnswered)}`));
   wrap.appendChild(section);
 
   return wrap;

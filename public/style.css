@@ -934,6 +934,20 @@ body.modal-open { overflow: hidden; }
     gap: 10px;
 }
 
+.answer-form-title {
+    font-family: var(--font-head);
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--text);
+    margin: 0;
+}
+
+.answer-form-label {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin: 0;
+}
+
 /* ──────────────────── header right + help ──────────────────── */
 
 .shell-header-right {

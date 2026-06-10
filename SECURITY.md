@@ -13,7 +13,7 @@ and tells security researchers how to report issues.
 - **Cloudflare** runs the Worker and stores the D1 database, so they are a
   processor in the usual cloud sense. No other third party is involved: no
   analytics, no trackers, no external calls carrying user data.
-- **Members** see each other's open and answered requests, who has prayed, and
+- **Members** see each other's active and Prayer Log requests, who has prayed, and
   group stats. Admins additionally see the Stats panel and can remove any post.
 
 ## Authentication

@@ -222,13 +222,13 @@ npx wrangler d1 execute cenacle_db --local --file "cenacle-backup-2026-06-09.sql
 npx wrangler d1 execute cenacle_db --remote --command "SELECT (SELECT COUNT(*) FROM members) AS members, (SELECT COUNT(*) FROM requests WHERE status='open') AS open, (SELECT COUNT(*) FROM requests WHERE status='answered') AS answered, (SELECT COUNT(*) FROM prayers) AS prayers;"
 ```
 
-### Year-end review (answered prayers this year)
+### Year-end review (Prayer Log entries this year)
 
 ```
 npx wrangler d1 execute cenacle_db --remote --command "SELECT title, answer_note, datetime(answered_at/1000,'unixepoch') AS answered_on FROM requests WHERE status='answered' AND answered_at >= strftime('%s','2026-01-01')*1000 ORDER BY answered_at;"
 ```
 
-(The **Answered** tab in the app shows the same thing more nicely - this is for
+(The **Prayer Log** tab in the app shows the same thing more nicely - this is for
 exporting or printing.)
 
 ### Deploy a code change
