@@ -27,10 +27,6 @@ const state = {
   member: null,
   tab: "open",
   stats: null,
-  // "New since last visit" marker from /me. Cards created/answered after this
-  // are highlighted, matching the per-tab count pills. Null until /me resolves.
-  since: null,
-  renderedFeed: null,
 };
 
 // ───────────────────────────── session ─────────────────────────────
@@ -207,29 +203,25 @@ function setActiveTab(tab) {
   }
 }
 
-function setTabBadge(tab, count) {
+// A tab carries a single dot when it holds anything new to you - no count, since
+// the cards inside now say what changed. The dot is just "look in here".
+function setTabDot(tab, on) {
   const button = el.tabs.find((t) => t.dataset.tab === tab);
   if (!button) return;
-  const badge = button.querySelector(".tab-badge");
-  if (!badge) return;
-  if (count > 0) {
-    badge.textContent = String(count);
-    badge.hidden = false;
-    button.setAttribute("aria-label", `${tab}, ${count} new`);
+  const dot = button.querySelector(".tab-dot");
+  if (!dot) return;
+  dot.hidden = !on;
+  if (on) {
+    button.setAttribute("aria-label", `${tab}, has new`);
   } else {
-    badge.textContent = "";
-    badge.hidden = true;
     button.removeAttribute("aria-label");
   }
 }
 
-function clearTabBadge(tab) {
-  setTabBadge(tab, 0);
-}
-
-// Fetch "new since last visit" counts and badge the tabs. Defensive: if /me is
-// unavailable or predates this feature, badges simply do not appear.
-async function refreshBadges() {
+// Fetch the per-tab "new to you" dots. Defensive: if /me is unavailable the dots
+// simply do not appear. The current tab's dot is also kept in sync locally from
+// its own feed (see renderFeed), so a tap that clears items reflects at once.
+async function refreshTabDots() {
   let data;
   try {
     data = await api("/me");
@@ -242,17 +234,10 @@ async function refreshBadges() {
     saveSession({ token: state.token, member: data.member });
     el.who.textContent = `Signed in as ${state.member.name}`;
   }
-  const badges = data.badges || {};
-  setTabBadge("open", toCount(badges.open));
-  setTabBadge("answered", toCount(badges.answered));
-  setTabBadge("mine", toCount(badges.mine));
-
-  // Capture the last-visit marker so the feed can highlight fresh cards. /me
-  // may resolve after the feed first paints, so re-apply once we have it.
-  if (typeof data.since === "number" && Number.isFinite(data.since)) {
-    state.since = data.since;
-    applyFreshHighlights();
-  }
+  const newTabs = data.newTabs || {};
+  setTabDot("open", !!newTabs.open);
+  setTabDot("answered", !!newTabs.answered);
+  setTabDot("mine", !!newTabs.mine);
 }
 
 function toCount(value) {
@@ -299,7 +284,7 @@ async function refreshAll({ force = false } = {}) {
   lastRefreshAt = Date.now();
   if (el.refreshBtn) el.refreshBtn.classList.add("is-refreshing");
   try {
-    await Promise.all([loadFeed(), refreshBadges(), loadStats()]);
+    await Promise.all([loadFeed(), refreshTabDots(), loadStats()]);
   } finally {
     refreshing = false;
     if (el.refreshBtn) el.refreshBtn.classList.remove("is-refreshing");
@@ -327,8 +312,10 @@ function writeFeedCache(tab, requests) {
 }
 
 function renderFeed(requests) {
-  state.renderedFeed = requests;
   el.feed.replaceChildren();
+  // Keep the current tab's dot consistent with the cards actually shown, without
+  // waiting on /me. The other tabs' dots come from refreshTabDots.
+  setTabDot(state.tab, requests.some((r) => r.isNew));
   if (requests.length === 0) {
     setFeedStatus(emptyMessage(state.tab));
     return;
@@ -337,27 +324,6 @@ function renderFeed(requests) {
   for (const req of requests) {
     el.feed.appendChild(renderCard(req));
   }
-}
-
-// Re-paint the current feed so "new since last visit" highlights appear once
-// /me resolves (it can land after the feed first renders).
-function applyFreshHighlights() {
-  if (state.renderedFeed) renderFeed(state.renderedFeed);
-}
-
-// A card is "fresh" when it is newer than the viewer's last-visit marker,
-// matching the tab count pills. Own posts and the Mine tab (whose "new" signal
-// is updates from others, not new posts) are never highlighted.
-function isFresh(req) {
-  if (state.since == null || req.isMine) return false;
-  if (state.tab === "answered") {
-    return typeof req.answeredAt === "number" && req.answeredAt > state.since;
-  }
-  if (state.tab === "open") {
-    return req.status === "open"
-      && typeof req.createdAt === "number" && req.createdAt > state.since;
-  }
-  return false;
 }
 
 function emptyMessage(tab) {
@@ -371,13 +337,16 @@ function renderCard(req) {
   li.className = req.status === "answered" ? "card card-answered" : "card";
   li.dataset.id = req.id;
 
-  const fresh = isFresh(req);
-  if (fresh) li.classList.add("card-fresh");
+  // "New to you": unseen activity on this request. A new comment is the most
+  // specific signal, so it names who replied; otherwise it's a new post or a
+  // move to the Prayer Log, shown as a plain "New" pill.
+  const newComments = toCount(req.newComments);
+  if (req.isNew) li.classList.add("card-fresh");
 
   const head = elem("div", "card-head");
-  if (fresh) {
+  if (req.isNew && newComments === 0) {
     const pill = elem("span", "card-new-pill", "New");
-    pill.setAttribute("aria-label", "New since your last visit");
+    pill.setAttribute("aria-label", "New to you");
     head.appendChild(pill);
   }
   head.appendChild(elem("h2", "card-title", req.title));
@@ -393,6 +362,15 @@ function renderCard(req) {
   parts.push(req.author, formatDate(req.createdAt));
   const cardMeta = parts.join(" - ");
   li.appendChild(elem("p", "card-meta", req.editedAt ? `${cardMeta} (edited)` : cardMeta));
+
+  // Name the unseen replies so "new" on your own prayers is finally concrete:
+  // who responded, not just a number with nothing to point at.
+  if (newComments > 0) {
+    const label = newComments === 1
+      ? `${req.newCommentAuthor || "Someone"} replied`
+      : `${newComments} new replies`;
+    li.appendChild(elem("p", "card-reply-note", label));
+  }
 
   if (req.status === "answered") {
     const badge = elem("p", "answered-badge", "In Prayer Log");
@@ -675,6 +653,10 @@ async function openDetail(id) {
   try {
     const data = await api(`/requests/${id}`);
     renderDetail(data.request);
+    // Opening the detail records a read receipt server-side, so the card is no
+    // longer new to you - clear its highlight in place and resync the dots.
+    clearCardHighlight(id);
+    refreshTabDots();
   } catch (err) {
     if (err.status === 401) { closeModal(); return handleExpiredSession(); }
     openModal((modal) => {
@@ -683,6 +665,19 @@ async function openDetail(id) {
         isNetworkError(err) ? "Could not connect. Try again." : "Could not load this request."));
     });
   }
+}
+
+// Drop the "new to you" treatment from a card already in the feed (after its
+// detail has been opened) without a full reload, and resync the current tab's
+// dot to whatever highlights remain.
+function clearCardHighlight(id) {
+  const li = el.feed.querySelector(`li[data-id="${CSS.escape(String(id))}"]`);
+  if (li) {
+    li.classList.remove("card-fresh");
+    li.querySelector(".card-new-pill")?.remove();
+    li.querySelector(".card-reply-note")?.remove();
+  }
+  setTabDot(state.tab, !!el.feed.querySelector(".card-fresh"));
 }
 
 function renderDetail(req) {
@@ -1366,7 +1361,7 @@ function enterApp() {
   showShell();
   setActiveTab("open");
   loadFeed();
-  refreshBadges();
+  refreshTabDots();
   loadStats();
   maybeShowOnboarding();
 }
@@ -1398,7 +1393,6 @@ el.gateForm.addEventListener("submit", async (e) => {
 
 for (const t of el.tabs) {
   t.addEventListener("click", () => {
-    clearTabBadge(t.dataset.tab);
     if (state.tab === t.dataset.tab) return;
     setActiveTab(t.dataset.tab);
     loadFeed();

@@ -208,8 +208,8 @@ async function handleSession(request, env) {
 
   const token = await mintToken(env, member);
 
-  // Note: last_seen_at is advanced by GET /me (the "new since last visit"
-  // marker), not here, so a returning member's badge window stays intact.
+  // last_seen_at (the frozen "new to you" baseline) is set on a member's first
+  // /me, never here, so redeeming a code never disturbs their unread state.
   return json({
     token,
     member: {
@@ -278,60 +278,100 @@ async function verifyToken(env, token) {
   }
 }
 
-async function touchLastSeen(env, memberId) {
-  await env.DB.prepare(`UPDATE members SET last_seen_at = ? WHERE id = ?`)
-    .bind(Date.now(), memberId)
-    .run();
+// The "new to you" baseline: the floor below which activity counts as already
+// seen. Frozen at a member's first visit so they are never greeted with a
+// backlog; after that, per-request `seen` rows (not this marker) track what has
+// actually been read. Returns the effective baseline (always a number).
+async function ensureBaseline(env, member) {
+  if (member.last_seen_at != null) return toInt(member.last_seen_at);
+  const now = Date.now();
+  await env.DB.prepare(
+    `UPDATE members SET last_seen_at = ? WHERE id = ? AND last_seen_at IS NULL`
+  ).bind(now, member.id).run();
+  return now;
+}
+
+// Record that a member has opened a request's detail (a read receipt). This is
+// what clears the request's "new to you" highlight for them.
+async function markSeen(env, memberId, requestId) {
+  await env.DB.prepare(`
+    INSERT INTO seen (member_id, request_id, seen_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(member_id, request_id) DO UPDATE SET seen_at = excluded.seen_at
+  `).bind(memberId, requestId, Date.now()).run();
+}
+
+// Canonical "new to you" predicate, shared by the feed and the tab dots so the
+// two can never disagree (the failure mode of the old count-pill system). A
+// request is new when it carries activity the member has not seen - a post by
+// someone else, a move to the Prayer Log, or a comment from someone else -
+// dated after both the frozen baseline and the member's per-request seen_at.
+// A member's own post only surfaces here through others' comments on it.
+function computeNewState(row, member, baseline) {
+  const mine = row.author_id === member.id;
+  const floor = Math.max(toInt(baseline), toInt(row.seen_at, 0));
+
+  const newPost = !mine && toInt(row.created_at) > floor;
+  const newAnswer = row.status === "answered" && row.answered_at != null
+    && !mine && toInt(row.answered_at) > floor;
+
+  // The feed query supplies a precomputed count of unseen foreign comments; the
+  // tab-dot query supplies the latest foreign comment's timestamp instead.
+  // Either is enough to tell whether a fresh comment exists.
+  let newComments = 0;
+  if (row.new_comments != null) {
+    newComments = toInt(row.new_comments);
+  } else if (row.last_foreign_update_at != null) {
+    newComments = toInt(row.last_foreign_update_at) > floor ? 1 : 0;
+  }
+
+  return {
+    isNew: newPost || newAnswer || newComments > 0,
+    newComments,
+    // Only meaningful when newComments > 0; the feed's latest-foreign-commenter
+    // is necessarily one of the unseen ones in that case.
+    newCommentAuthor: newComments > 0 ? (row.new_comment_author ?? null) : null,
+  };
 }
 
 // ─────────────────────────────── /me ───────────────────────────────
 
-// "New since last visit" badges. Reads the stored last_seen_at as the window
-// start, computes per-tab counts against it, then advances the marker to now
-// (consume-on-read). A member's first visit (last_seen_at NULL) shows zero so
-// they are not greeted with a huge backlog count.
+// Per-tab "new to you" dots. Each tab reports a single boolean - does it hold
+// any request that is new to this member - rather than an opaque count, since
+// the card itself now carries what changed. Computed with the same predicate as
+// the feed (computeNewState) so a dot never appears without a matching card.
 async function handleMe(env, member) {
-  const firstVisit = member.last_seen_at == null;
-  const since = firstVisit ? Date.now() : toInt(member.last_seen_at);
+  const baseline = await ensureBaseline(env, member);
 
-  let badges = { open: 0, answered: 0, mine: 0 };
-
-  if (!firstVisit) {
-    // New open requests from other members (the Open tab).
-    const newOpen = await env.DB.prepare(`
-      SELECT COUNT(*) AS n FROM requests
-      WHERE status = 'open' AND created_at > ? AND author_id != ?
-    `).bind(since, member.id).first();
-
-    // Requests answered by others since the marker (the Answered tab).
-    const newAnswered = await env.DB.prepare(`
-      SELECT COUNT(*) AS n FROM requests
-      WHERE status = 'answered' AND answered_at > ? AND author_id != ?
-    `).bind(since, member.id).first();
-
-    // New updates from others on the member's own requests (the Mine tab).
-    const newMine = await env.DB.prepare(`
-      SELECT COUNT(*) AS n FROM updates u
-      JOIN requests r ON r.id = u.request_id
-      WHERE r.author_id = ? AND r.status != 'archived'
-        AND u.member_id != ? AND u.created_at > ?
-    `).bind(member.id, member.id, since).first();
-
-    badges = {
-      open: toInt(newOpen?.n),
-      answered: toInt(newAnswered?.n),
-      mine: toInt(newMine?.n),
-    };
-  }
-
-  await touchLastSeen(env, member.id);
+  const newTabs = {
+    open: await tabHasNew(env, member, baseline, "r.status = 'open'", []),
+    answered: await tabHasNew(env, member, baseline, "r.status = 'answered'", []),
+    mine: await tabHasNew(
+      env, member, baseline, "r.author_id = ? AND r.status != 'archived'", [member.id]
+    ),
+  };
 
   return json({
     member: { id: member.id, name: member.name, role: member.role },
-    since,
-    firstVisit,
-    badges,
+    newTabs,
   });
+}
+
+// Whether a tab (given its WHERE clause) contains any request that is new to the
+// member. Selects only the columns computeNewState needs and ORs the result.
+async function tabHasNew(env, member, baseline, where, whereBinds) {
+  const { results } = await env.DB.prepare(`
+    SELECT r.author_id, r.created_at, r.answered_at, r.status,
+      s.seen_at AS seen_at,
+      (SELECT MAX(u.created_at) FROM updates u
+         WHERE u.request_id = r.id AND u.member_id != ?) AS last_foreign_update_at
+    FROM requests r
+    LEFT JOIN seen s ON s.request_id = r.id AND s.member_id = ?
+    WHERE ${where}
+    LIMIT 200
+  `).bind(member.id, member.id, ...whereBinds).all();
+
+  return (results ?? []).some((row) => computeNewState(row, member, baseline).isNew);
 }
 
 async function handleUpdateProfile(request, env, member) {
@@ -498,20 +538,26 @@ function medianHours(msValues) {
 async function handleListRequests(request, env, member) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || "open";
+  const baseline = await ensureBaseline(env, member);
 
   let where;
-  let binds;
+  let whereBinds;
   if (status === "answered") {
     where = "r.status = 'answered'";
-    binds = [];
+    whereBinds = [];
   } else if (status === "mine") {
     where = "r.author_id = ? AND r.status != 'archived'";
-    binds = [member.id];
+    whereBinds = [member.id];
   } else {
     where = "r.status = 'open'";
-    binds = [];
+    whereBinds = [];
   }
 
+  // new_comments / new_comment_author back the "new to you" highlight: comments
+  // from others, posted after the member's seen_at for this request (or the
+  // frozen baseline if never opened). The author subquery is unconditional but
+  // only consumed when new_comments > 0, where the latest foreign comment is by
+  // definition one of the unseen ones.
   const { results } = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
@@ -519,19 +565,28 @@ async function handleListRequests(request, env, member) {
       m.name AS author_name,
       (SELECT COUNT(DISTINCT p.member_id) FROM prayers p WHERE p.request_id = r.id) AS distinct_prayers,
       (SELECT COUNT(*)                    FROM prayers p WHERE p.request_id = r.id) AS total_prayers,
-      (SELECT COUNT(*) FROM prayers p WHERE p.request_id = r.id AND p.member_id = ?) AS viewer_prayers
+      (SELECT COUNT(*) FROM prayers p WHERE p.request_id = r.id AND p.member_id = ?) AS viewer_prayers,
+      s.seen_at AS seen_at,
+      (SELECT COUNT(*) FROM updates u
+         WHERE u.request_id = r.id AND u.member_id != ?
+           AND u.created_at > MAX(COALESCE(s.seen_at, 0), ?)) AS new_comments,
+      (SELECT um.name FROM updates u JOIN members um ON um.id = u.member_id
+         WHERE u.request_id = r.id AND u.member_id != ?
+         ORDER BY u.created_at DESC LIMIT 1) AS new_comment_author
     FROM requests r
     JOIN members m ON m.id = r.author_id
+    LEFT JOIN seen s ON s.request_id = r.id AND s.member_id = ?
     WHERE ${where}
     ORDER BY r.created_at DESC
     LIMIT 200
-  `).bind(member.id, ...binds).all();
+  `).bind(member.id, member.id, baseline, member.id, member.id, ...whereBinds).all();
 
-  const cards = (results ?? []).map((row) => serializeCard(row, member));
+  const cards = (results ?? []).map((row) => serializeCard(row, member, baseline));
   return json({ requests: cards });
 }
 
 async function handleRequestDetail(env, member, id) {
+  const baseline = await ensureBaseline(env, member);
   const row = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
@@ -568,7 +623,7 @@ async function handleRequestDetail(env, member, id) {
     ORDER BY last_at DESC
   `).bind(id).all();
 
-  const card = serializeCard(row, member);
+  const card = serializeCard(row, member, baseline);
   card.body = String(row.body ?? "");
   card.updates = (updateRows ?? []).map((u) => ({
     id: u.id,
@@ -580,6 +635,10 @@ async function handleRequestDetail(env, member, id) {
     id: p.member_id,
     name: p.name,
   }));
+
+  // Opening the detail means the member has now seen everything on this request,
+  // so stamp the read receipt - this is what clears its "new to you" highlight.
+  await markSeen(env, member.id, id);
 
   return json({ request: card });
 }
@@ -761,11 +820,13 @@ function canModerate(member, req) {
 
 // Anonymity-respecting card serializer (SEC4): when is_anonymous and the
 // viewer is neither the author nor an admin, strip author identity.
-function serializeCard(row, member) {
+function serializeCard(row, member, baseline) {
   const isAnon = Number(row.is_anonymous) === 1;
   const isOwner = row.author_id === member.id;
   const isAdmin = member.role === "admin";
   const hideAuthor = isAnon && !isOwner && !isAdmin;
+
+  const newState = computeNewState(row, member, baseline);
 
   const card = {
     id: row.id,
@@ -782,6 +843,11 @@ function serializeCard(row, member) {
     totalPrayers: toInt(row.total_prayers),
     hasViewerPrayed: toInt(row.viewer_prayers) > 0,
     isMine: isOwner,
+    // "New to you" highlight: whether this card carries unseen activity, and if
+    // that activity is a comment, who left it (so the card can say what changed).
+    isNew: newState.isNew,
+    newComments: newState.newComments,
+    newCommentAuthor: newState.newCommentAuthor,
   };
 
   if (hideAuthor) {

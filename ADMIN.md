@@ -85,9 +85,10 @@ Admins can see the Stats panel and remove anyone's post.
 npx wrangler d1 execute cenacle_db --remote --command "SELECT id, name, role, joined_at, last_seen_at FROM members ORDER BY name;"
 ```
 
-`id` is the number you'll use in other commands. `last_seen_at` (and
-`joined_at`) are timestamps in milliseconds; `0`/empty `last_seen_at` means
-they've never logged in yet.
+`id` is the number you'll use in other commands. `joined_at` and `last_seen_at`
+are timestamps in milliseconds; `last_seen_at` is set on a member's first visit
+(it's the frozen baseline for the "new to you" highlight), so an empty
+`last_seen_at` means they've never logged in yet.
 
 ### Make someone an admin (or take it away)
 

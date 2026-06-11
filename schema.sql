@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS members (
   token_version INTEGER NOT NULL DEFAULT 1,      -- bump to instantly invalidate all live sessions
   role          TEXT NOT NULL DEFAULT 'member',  -- 'member' | 'admin'
   joined_at     INTEGER NOT NULL,                -- epoch ms
-  last_seen_at  INTEGER                          -- epoch ms, drives "new since last visit"
+  last_seen_at  INTEGER                          -- epoch ms, frozen first-visit baseline for "new to you"
 );
 
 CREATE TABLE IF NOT EXISTS requests (
@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS updates (
   member_id   INTEGER NOT NULL REFERENCES members(id),
   body        TEXT NOT NULL,
   created_at  INTEGER NOT NULL
+);
+
+-- Per-member read tracking: when a member last opened a request's detail.
+-- Drives the "new to you" highlight (a request is new when its latest activity
+-- post-dates the member's seen_at, or it was never opened).
+CREATE TABLE IF NOT EXISTS seen (
+  member_id   INTEGER NOT NULL REFERENCES members(id),
+  request_id  INTEGER NOT NULL REFERENCES requests(id),
+  seen_at     INTEGER NOT NULL,
+  PRIMARY KEY (member_id, request_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_prayers_request ON prayers(request_id);

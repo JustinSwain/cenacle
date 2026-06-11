@@ -29,9 +29,6 @@
     --danger-ink: #b34d41;
     --danger-bg: rgba(201, 106, 94, 0.12);
 
-    --badge-bg: #ef9f5e;
-    --badge-ink: #4a2e10;
-
     --shadow: 0 6px 20px rgba(120, 84, 54, 0.12);
     --shadow-soft: 0 3px 12px rgba(120, 84, 54, 0.10);
     --focus: #d9785c;
@@ -66,9 +63,6 @@
     --danger: #e1897d;
     --danger-ink: #ec9a8f;
     --danger-bg: rgba(225, 137, 125, 0.12);
-
-    --badge-bg: #f0a85e;
-    --badge-ink: #3a2308;
 
     --shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
     --shadow-soft: 0 3px 12px rgba(0, 0, 0, 0.28);
@@ -106,9 +100,6 @@
     --danger-ink: #b34d41;
     --danger-bg: rgba(201, 106, 94, 0.12);
 
-    --badge-bg: #5b9bd5;
-    --badge-ink: #10243a;
-
     --shadow: 0 6px 20px rgba(54, 84, 120, 0.12);
     --shadow-soft: 0 3px 12px rgba(54, 84, 120, 0.10);
     --focus: #5b8fb0;
@@ -140,9 +131,6 @@
     --danger: #e1897d;
     --danger-ink: #ec9a8f;
     --danger-bg: rgba(225, 137, 125, 0.12);
-
-    --badge-bg: #5e9fd0;
-    --badge-ink: #08233a;
 
     --shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
     --shadow-soft: 0 3px 12px rgba(0, 0, 0, 0.28);
@@ -178,9 +166,6 @@
     --danger-ink: #b34d41;
     --danger-bg: rgba(201, 106, 94, 0.12);
 
-    --badge-bg: #b0a48f;
-    --badge-ink: #322a1c;
-
     --shadow: 0 6px 20px rgba(80, 76, 68, 0.12);
     --shadow-soft: 0 3px 12px rgba(80, 76, 68, 0.10);
     --focus: #8d9a86;
@@ -212,9 +197,6 @@
     --danger: #e1897d;
     --danger-ink: #ec9a8f;
     --danger-bg: rgba(225, 137, 125, 0.12);
-
-    --badge-bg: #bcae93;
-    --badge-ink: #2a2316;
 
     --shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
     --shadow-soft: 0 3px 12px rgba(0, 0, 0, 0.28);
@@ -622,9 +604,9 @@ button {
     color: var(--success-ink);
 }
 
-/* "New since last visit" cards: a left accent bar (drawn as an inset shadow so
-   it never shifts layout) plus a small pill. Same signal as the tab count
-   pills. The inset shadow is restated on hover so it survives the hover shadow. */
+/* "New to you" cards: a left accent bar (drawn as an inset shadow so it never
+   shifts layout) plus a pill or, for new comments, the reply line below. The
+   inset shadow is restated on hover so it survives the hover shadow. */
 .card-fresh {
     border-color: var(--primary-soft-border);
     box-shadow: inset 3px 0 0 0 var(--primary), var(--shadow-soft);
@@ -650,6 +632,17 @@ button {
     border: 1px solid var(--primary-soft-border);
     border-radius: 999px;
     padding: 2px 9px;
+}
+
+/* The "new to you" reply line: names who responded to a request since you last
+   opened it, so the highlight on your own prayers points at something concrete
+   instead of being a bare count. */
+.card-reply-note {
+    margin: 8px 0 0;
+    font-family: var(--font-head);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--primary);
 }
 
 .answer-note {
@@ -1029,23 +1022,20 @@ body.modal-open { overflow: hidden; }
     margin: 0 0 18px;
 }
 
-/* ──────────────────────── tab badges ──────────────────────── */
+/* ──────────────── tab "new to you" dot ──────────────── */
 
-.tab-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 6px;
-    border-radius: 11px;
-    background: var(--badge-bg);
-    color: var(--badge-ink);
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 700;
-    line-height: 1;
+/* A single dot, not a count: it only says "there's something new in here", and
+   the cards inside say what. On the active tab (filled with --primary) it flips
+   to --primary-ink so it stays visible. */
+.tab-dot {
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--primary);
 }
+
+.tab-active .tab-dot { background: var(--primary-ink); }
 
 /* ─────────────────── onboarding + help text ─────────────────── */
 
