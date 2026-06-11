@@ -200,6 +200,78 @@ npx wrangler d1 execute cenacle_db --remote --command "SELECT id, title, status 
 
 ---
 
+## Updating to a new version
+
+When the app gets new features, updating your live group is three steps:
+**pull, migrate, deploy.** Run them from the repo root, and
+[back up the database](#back-up-the-database) first if it's a big update.
+
+### 1. Pull the latest code
+
+```
+git pull
+```
+
+Your `wrangler.jsonc` is customized for your group (your `database_id`, group
+name, domain). Those aren't part of the shared code, so an update normally
+leaves them alone; if git ever reports a conflict there, keep **your** values.
+
+### 2. Apply any new database migrations
+
+Some features add tables or columns. Migrations are the tracked, repeatable way
+to make those schema changes. Rehearse on the throwaway local copy first, then
+run it for real:
+
+```
+npx wrangler d1 migrations apply cenacle_db --local     # rehearse, safe to break
+npx wrangler d1 migrations apply cenacle_db --remote    # the live database
+```
+
+Wrangler lists which migrations are pending and applies only those. If nothing
+is pending it says so and does nothing - safe to run anytime.
+
+### 3. Deploy the new code
+
+```
+npm run deploy
+```
+
+That's it - the new version is live.
+
+### Always change the live schema with `migrations apply`
+
+`migrations apply` records each migration it runs in a hidden `d1_migrations`
+table, so it knows what's already done. If you instead change the live schema by
+hand - e.g. a one-off `... --command "ALTER TABLE ..."` - that change is **not**
+recorded, and the tracker drifts out of sync with the real schema.
+
+The symptom turns up at the *next* update as an error like:
+
+```
+duplicate column name: edited_at
+```
+
+It means a migration is trying to re-add something that already exists, because
+its bookkeeping row is missing. To recover, tell wrangler that the
+already-applied migration is done (this writes only the tracking row - it makes
+**no** schema change), then apply the rest:
+
+```
+# See what's recorded as applied:
+npx wrangler d1 execute cenacle_db --remote --command "SELECT name FROM d1_migrations ORDER BY id"
+
+# Mark the migration whose change already exists as done (use its exact filename):
+npx wrangler d1 execute cenacle_db --remote --command "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0002_add_edited_at.sql')"
+
+# Now apply the genuinely-new migrations:
+npx wrangler d1 migrations apply cenacle_db --remote
+```
+
+Sticking to `migrations apply` for every remote schema change keeps this from
+happening again.
+
+---
+
 ## Housekeeping
 
 ### Back up the database
@@ -256,6 +328,7 @@ npm run deploy
 | Remove a junk post | **app** | open post -> **Remove post** |
 | Restore a post | terminal | `UPDATE requests SET status='open' ...` |
 | Back up everything | terminal | `wrangler d1 export cenacle_db --remote --output ...` |
+| Update to a new version | terminal | `git pull` -> `d1 migrations apply --remote` -> `npm run deploy` |
 | Deploy code changes | terminal | `npm run deploy` |
 
 ---
