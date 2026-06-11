@@ -622,6 +622,36 @@ button {
     color: var(--success-ink);
 }
 
+/* "New since last visit" cards: a left accent bar (drawn as an inset shadow so
+   it never shifts layout) plus a small pill. Same signal as the tab count
+   pills. The inset shadow is restated on hover so it survives the hover shadow. */
+.card-fresh {
+    border-color: var(--primary-soft-border);
+    box-shadow: inset 3px 0 0 0 var(--primary), var(--shadow-soft);
+}
+
+.card-fresh:hover {
+    box-shadow: inset 3px 0 0 0 var(--primary), var(--shadow);
+}
+
+.card-new-pill {
+    flex: 0 0 auto;
+    align-self: center;
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    /* Match the "Prayed" button: the soft-tint background is dark in dark mode,
+       so --primary-ink (a dark ink for the bright fill) would be dark-on-dark.
+       --text always contrasts the surface in both modes. */
+    color: var(--text);
+    background: var(--primary-soft-bg);
+    border: 1px solid var(--primary-soft-border);
+    border-radius: 999px;
+    padding: 2px 9px;
+}
+
 .answer-note {
     margin: 10px 0 0;
     padding: 12px 16px;

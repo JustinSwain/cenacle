@@ -27,6 +27,10 @@ const state = {
   member: null,
   tab: "open",
   stats: null,
+  // "New since last visit" marker from /me. Cards created/answered after this
+  // are highlighted, matching the per-tab count pills. Null until /me resolves.
+  since: null,
+  renderedFeed: null,
 };
 
 // ───────────────────────────── session ─────────────────────────────
@@ -242,6 +246,13 @@ async function refreshBadges() {
   setTabBadge("open", toCount(badges.open));
   setTabBadge("answered", toCount(badges.answered));
   setTabBadge("mine", toCount(badges.mine));
+
+  // Capture the last-visit marker so the feed can highlight fresh cards. /me
+  // may resolve after the feed first paints, so re-apply once we have it.
+  if (typeof data.since === "number" && Number.isFinite(data.since)) {
+    state.since = data.since;
+    applyFreshHighlights();
+  }
 }
 
 function toCount(value) {
@@ -316,6 +327,7 @@ function writeFeedCache(tab, requests) {
 }
 
 function renderFeed(requests) {
+  state.renderedFeed = requests;
   el.feed.replaceChildren();
   if (requests.length === 0) {
     setFeedStatus(emptyMessage(state.tab));
@@ -325,6 +337,27 @@ function renderFeed(requests) {
   for (const req of requests) {
     el.feed.appendChild(renderCard(req));
   }
+}
+
+// Re-paint the current feed so "new since last visit" highlights appear once
+// /me resolves (it can land after the feed first renders).
+function applyFreshHighlights() {
+  if (state.renderedFeed) renderFeed(state.renderedFeed);
+}
+
+// A card is "fresh" when it is newer than the viewer's last-visit marker,
+// matching the tab count pills. Own posts and the Mine tab (whose "new" signal
+// is updates from others, not new posts) are never highlighted.
+function isFresh(req) {
+  if (state.since == null || req.isMine) return false;
+  if (state.tab === "answered") {
+    return typeof req.answeredAt === "number" && req.answeredAt > state.since;
+  }
+  if (state.tab === "open") {
+    return req.status === "open"
+      && typeof req.createdAt === "number" && req.createdAt > state.since;
+  }
+  return false;
 }
 
 function emptyMessage(tab) {
@@ -338,7 +371,15 @@ function renderCard(req) {
   li.className = req.status === "answered" ? "card card-answered" : "card";
   li.dataset.id = req.id;
 
+  const fresh = isFresh(req);
+  if (fresh) li.classList.add("card-fresh");
+
   const head = elem("div", "card-head");
+  if (fresh) {
+    const pill = elem("span", "card-new-pill", "New");
+    pill.setAttribute("aria-label", "New since your last visit");
+    head.appendChild(pill);
+  }
   head.appendChild(elem("h2", "card-title", req.title));
   const chevron = elem("span", "card-chevron", "›");
   chevron.setAttribute("aria-hidden", "true");
