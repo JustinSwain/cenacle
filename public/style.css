@@ -894,13 +894,14 @@ body.modal-open { overflow: hidden; }
     word-break: break-word;
 }
 
+/* The count moved entirely to the .praying line above, so the pray button is
+   the only thing here - let it span the modal as the primary action. */
 .detail-pray-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
+}
+
+.detail-pray-row .pray-btn {
+    width: 100%;
 }
 
 .updates-title {
@@ -935,8 +936,7 @@ body.modal-open { overflow: hidden; }
     margin-top: 16px;
 }
 
-.author-actions,
-.admin-actions {
+.author-actions {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -945,30 +945,38 @@ body.modal-open { overflow: hidden; }
     border-top: 2px solid var(--border);
 }
 
+/* Admin-only "Remove post" sits in its own contained danger zone - a soft
+   danger tint and border set it apart from ordinary actions, subtly flagging a
+   destructive power that only admins have. */
+.admin-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 16px;
+    border: 1px solid var(--danger);
+    border-radius: 14px;
+    background: var(--danger-bg);
+}
+
 .admin-actions-note {
     margin: 0;
     font-size: 0.95rem;
-    color: var(--muted);
+    color: var(--danger-ink);
 }
 
 .answer-form {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 14px;
 }
 
-.answer-form-title {
-    font-family: var(--font-head);
-    font-weight: 600;
+/* Intro line on the dedicated "Move to Prayer Log" screen. */
+.answer-lead {
+    margin: 0 0 18px;
     font-size: 1.05rem;
+    line-height: 1.55;
     color: var(--text);
-    margin: 0;
-}
-
-.answer-form-label {
-    font-size: 0.9rem;
-    color: var(--muted);
-    margin: 0;
 }
 
 /* ──────────────────── header right + help ──────────────────── */

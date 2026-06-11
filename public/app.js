@@ -712,14 +712,16 @@ function renderDetail(req) {
       modal.appendChild(t);
     }
 
-    // Who's praying: count line that expands to names.
-    modal.appendChild(renderPraying(req));
+    // Who's praying: the single source for the count here, expandable to names.
+    // The pray button below carries no count of its own - that was a duplicate
+    // of this line. `let` so a pray tap can swap in a fresh, updated copy.
+    let prayingEl = renderPraying(req);
+    modal.appendChild(prayingEl);
 
     // Pray button (not for answered requests).
     if (req.status !== "answered") {
       const ownPost = !!req.isMine;
       const prayRow = elem("div", "detail-pray-row");
-      const countEl = elem("span", "card-count", prayerCountLabel(req.distinctPrayers, ownPost));
       const btn = elem("button", "pray-btn");
       btn.type = "button";
       // Your own request shows as already "Prayed" and can't be re-tapped.
@@ -727,9 +729,12 @@ function renderDetail(req) {
       if (ownPost) {
         btn.setAttribute("aria-label", "This is your own request.");
       } else {
-        btn.addEventListener("click", () => onPrayDetail(req, btn, countEl));
+        btn.addEventListener("click", () => onPrayDetail(req, btn, () => {
+          const fresh = renderPraying(req);
+          prayingEl.replaceWith(fresh);
+          prayingEl = fresh;
+        }));
       }
-      prayRow.appendChild(countEl);
       prayRow.appendChild(btn);
       modal.appendChild(prayRow);
     }
@@ -795,22 +800,46 @@ function renderPraying(req) {
   return wrap;
 }
 
-async function onPrayDetail(req, btn, countEl) {
-  // Optimistic: settle the button (which disables it) and bump the count.
-  req.distinctPrayers += 1;
-  countEl.textContent = prayerCountLabel(req.distinctPrayers);
+async function onPrayDetail(req, btn, refreshPraying) {
+  // Optimistic: settle the button (which disables it) and reflect the viewer in
+  // the "who's praying" line - now the only place the count lives.
+  addViewerToPrayers(req);
   setPrayButton(btn, true);
+  refreshPraying();
   try {
     const result = await api(`/requests/${req.id}/pray`, { method: "POST" });
     req.distinctPrayers = result.distinctPrayers;
     req.hasViewerPrayed = result.hasViewerPrayed;
-    countEl.textContent = prayerCountLabel(req.distinctPrayers);
     setPrayButton(btn, true);
+    refreshPraying();
   } catch (err) {
-    req.distinctPrayers = Math.max(0, req.distinctPrayers - 1);
-    countEl.textContent = prayerCountLabel(req.distinctPrayers);
+    removeViewerFromPrayers(req);
     setPrayButton(btn, false);
+    refreshPraying();
     if (err.status === 401) { closeModal(); return handleExpiredSession(); }
+  }
+}
+
+// Optimistically reflect the signed-in member in a request's praying list so the
+// "who's praying" line can re-render without a round trip. Prayer-ers are named
+// to each other, so showing the member's own name here is correct.
+function addViewerToPrayers(req) {
+  const me = state.member;
+  if (!me) return;
+  req.prayingMembers = req.prayingMembers || [];
+  if (!req.prayingMembers.some((m) => m.id === me.id)) {
+    req.prayingMembers.unshift({ id: me.id, name: me.name });
+    req.distinctPrayers = (req.distinctPrayers || 0) + 1;
+  }
+}
+
+function removeViewerFromPrayers(req) {
+  const me = state.member;
+  if (!me) return;
+  const before = (req.prayingMembers || []).length;
+  req.prayingMembers = (req.prayingMembers || []).filter((m) => m.id !== me.id);
+  if (req.prayingMembers.length < before) {
+    req.distinctPrayers = Math.max(0, (req.distinctPrayers || 0) - 1);
   }
 }
 
@@ -864,48 +893,12 @@ function renderUpdateForm(req) {
 function renderAuthorActions(req) {
   const wrap = elem("div", "author-actions");
 
-  // "Move to Prayer Log" reveals a closing-note field inline.
-  const answerForm = elem("form", "answer-form");
-  answerForm.hidden = true;
-  answerForm.appendChild(elem("p", "answer-form-title", "Move to Prayer Log?"));
-  const note = elem("textarea", "field-input field-textarea");
-  note.id = "prayer-log-note";
-  note.rows = 3;
-  note.maxLength = 2000;
-  note.placeholder =
-    "Share a final update, praise report, or reason this prayer no longer needs to remain active.";
-  const noteLabel = elem("label", "answer-form-label", "Add a closing note");
-  noteLabel.htmlFor = note.id;
-  answerForm.appendChild(noteLabel);
-  answerForm.appendChild(note);
-  const confirm = elem("button", "btn-primary", "Add to Prayer Log");
-  confirm.type = "submit";
-  answerForm.appendChild(confirm);
-
+  // Moving to the Prayer Log opens its own dedicated screen (see openAnswerForm)
+  // rather than expanding inline, so it never sits alongside the still-live
+  // updates thread and read as two competing actions.
   const answerBtn = elem("button", "btn-secondary", "Move to Prayer Log");
   answerBtn.type = "button";
-  answerBtn.addEventListener("click", () => {
-    answerForm.hidden = false;
-    answerBtn.hidden = true;
-    note.focus();
-  });
-
-  answerForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    confirm.disabled = true;
-    try {
-      const data = await api(`/requests/${req.id}/answer`, {
-        method: "POST",
-        body: { answerNote: note.value.trim() },
-      });
-      renderDetail(data.request);
-      // Refresh the underlying feed so the card moves to the Prayer Log.
-      loadFeed();
-    } catch (err) {
-      if (err.status === 401) { closeModal(); return handleExpiredSession(); }
-      confirm.disabled = false;
-    }
-  });
+  answerBtn.addEventListener("click", () => openAnswerForm(req));
 
   const archiveBtn = elem("button", "btn-danger", "Archive");
   archiveBtn.type = "button";
@@ -922,9 +915,69 @@ function renderAuthorActions(req) {
   });
 
   wrap.appendChild(answerBtn);
-  wrap.appendChild(answerForm);
   wrap.appendChild(archiveBtn);
   return wrap;
+}
+
+// A single-purpose screen for moving a request to the Prayer Log. It replaces
+// the detail view entirely so the closing note is the only thing in front of
+// the author - no updates thread, no pray button - making the action clear.
+// Cancel returns to the detail; confirming shows the now-logged request.
+function openAnswerForm(req) {
+  openModal((modal) => {
+    modalHeader(modal, "Move to Prayer Log");
+
+    modal.appendChild(elem("p", "answer-lead",
+      `This moves "${req.title}" out of the active list. It stays readable in the `
+      + "Prayer Log, where the group can look back on it."));
+
+    const form = elem("form", "answer-form");
+
+    const note = elem("textarea", "field-input field-textarea");
+    note.id = "prayer-log-note";
+    note.rows = 4;
+    note.maxLength = 2000;
+    note.placeholder =
+      "Share a final update, praise report, or reason this prayer no longer needs to remain active.";
+    form.appendChild(labeled("Closing note (optional)", note));
+
+    const errLine = elem("p", "form-error");
+    errLine.hidden = true;
+    form.appendChild(errLine);
+
+    const actions = elem("div", "modal-actions");
+    const cancel = elem("button", "btn-secondary", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => renderDetail(req));
+    const confirm = elem("button", "btn-primary", "Add to Prayer Log");
+    confirm.type = "submit";
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    form.appendChild(actions);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      confirm.disabled = true;
+      try {
+        const data = await api(`/requests/${req.id}/answer`, {
+          method: "POST",
+          body: { answerNote: note.value.trim() },
+        });
+        renderDetail(data.request);
+        // Refresh the underlying feed so the card moves to the Prayer Log.
+        loadFeed();
+      } catch (err) {
+        if (err.status === 401) { closeModal(); return handleExpiredSession(); }
+        showFormError(errLine, isNetworkError(err)
+          ? "Could not connect. Try again."
+          : "Could not move that. Try again.");
+        confirm.disabled = false;
+      }
+    });
+
+    modal.appendChild(form);
+    note.focus();
+  });
 }
 
 // ─────────────────────── onboarding + help ───────────────────────
