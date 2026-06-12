@@ -719,6 +719,9 @@ async function handlePray(env, member, id) {
   if (!req || req.status === "archived") {
     return json({ error: "Not found" }, 404);
   }
+  if (req.status !== "open") {
+    return json({ error: "This request is already in the Prayer Log." }, 409);
+  }
 
   const now = Date.now();
   // One prayer signal per member per request: if this member has already prayed
@@ -791,6 +794,9 @@ async function handleAddUpdate(request, env, member, id) {
   if (!req || req.status === "archived") {
     return json({ error: "Not found" }, 404);
   }
+  if (req.status !== "open") {
+    return json({ error: "This request is already in the Prayer Log." }, 409);
+  }
 
   await env.DB.prepare(`
     INSERT INTO updates (request_id, member_id, body, created_at)
@@ -850,6 +856,9 @@ async function handleAnswer(request, env, member, id) {
     .bind(id).first();
   if (!req || req.status === "archived") {
     return json({ error: "Not found" }, 404);
+  }
+  if (req.status !== "open") {
+    return json({ error: "This request is already in the Prayer Log." }, 409);
   }
   if (!canModerate(member, req)) {
     return json({ error: "Only the author can move this to the Prayer Log." }, 403);
