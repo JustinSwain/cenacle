@@ -4,7 +4,7 @@ Everyday backend tasks for running your group's prayer app. No prior Cloudflare
 knowledge assumed - just follow the recipes.
 
 > **There are no passwords.** Each person logs in with a personal invite code
-> (like `coral-7382`) baked into their link. So "reset a password" really means
+> (like `coral-maple-7382`) baked into their link. So "reset a password" really means
 > "give them a new code," and "lock someone out" means "revoke their code."
 
 ---
@@ -53,8 +53,8 @@ node scripts/seed-members.mjs --remote "Alice" "Bob" "Carol"
 It prints something like:
 
 ```
-Alice: https://your-group.example.workers.dev/?code=maple-4821
-    code: maple-4821
+Alice: https://your-group.example.workers.dev/?code=maple-river-4821
+    code: maple-river-4821
 ```
 
 The link's base comes from `--url <your-deploy-url>` or the `APP_URL`
@@ -115,10 +115,10 @@ npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET name =
 This is the closest thing to a password reset. Two steps: pick a new code,
 store its hash, and bump their `token_version` so the old code stops working.
 
-1. Choose a new code, e.g. `river-5093`, and compute its hash:
+1. Choose a new code, e.g. `river-maple-5093`, and compute its hash:
 
    ```
-   node -e "console.log(require('crypto').createHash('sha256').update('river-5093').digest('hex'))"
+   node -e "console.log(require('crypto').createHash('sha256').update('river-maple-5093').digest('hex'))"
    ```
 
    That prints a long hex string - copy it.
@@ -131,7 +131,7 @@ store its hash, and bump their `token_version` so the old code stops working.
    ```
 
 3. Send them their new link (use your own deploy URL):
-   `https://your-group.example.workers.dev/?code=river-5093`
+   `https://your-group.example.workers.dev/?code=river-maple-5093`
 
 ### Lock someone out immediately (revoke access)
 
@@ -158,8 +158,8 @@ everywhere becomes invalid and people re-tap their links to sign back in.
 npx wrangler secret put SESSION_SECRET
 ```
 
-Enter a fresh long random string when prompted. (Changing the secret does not
-change anyone's invite code - their links still work.)
+Enter a fresh random string at least 32 characters long when prompted. (Changing
+the secret does not change anyone's invite code - their links still work.)
 
 ---
 

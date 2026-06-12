@@ -52,7 +52,8 @@
 		},
 	]
 	/**
-	 * SESSION_SECRET is a Worker secret, never committed. Set it with:
+	 * SESSION_SECRET is a Worker secret, never committed. Use at least 32
+	 * random characters. Set it with:
 	 *   wrangler secret put SESSION_SECRET
 	 */
 }

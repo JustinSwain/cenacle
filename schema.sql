@@ -49,7 +49,16 @@ CREATE TABLE IF NOT EXISTS seen (
   PRIMARY KEY (member_id, request_id)
 );
 
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id          INTEGER PRIMARY KEY,
+  subject     TEXT NOT NULL,                     -- HMAC of IP or attempted code hash; raw values never stored
+  created_at  INTEGER NOT NULL,
+  succeeded   INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_prayers_request ON prayers(request_id);
 CREATE INDEX IF NOT EXISTS idx_prayers_member  ON prayers(member_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_updates_request ON updates(request_id);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_subject_time
+  ON login_attempts(subject, created_at);

@@ -19,8 +19,8 @@ anyone else's.
 
 ## Features
 
-- **Per-person invite codes** - each member gets a unique link; no passwords or
-  email. Revoke or reissue access in one command.
+- **Per-person invite codes** - each member gets a unique typed link; no
+  passwords or email. Revoke or reissue access in one command.
 - **Active / Prayer Log / Mine feeds** - browse current requests, look back on
   the ones that have closed, and find your own.
 - **"I prayed" taps** - let people know they're being prayed for, with simple
@@ -57,7 +57,7 @@ tier is plenty) and [Node.js](https://nodejs.org/) installed.
    npx wrangler d1 migrations apply cenacle_db --remote
    ```
 
-4. **Set the session secret** (any long random string; it's never committed):
+4. **Set the session secret** (at least 32 random characters; it's never committed):
    ```
    npx wrangler secret put SESSION_SECRET
    ```
@@ -81,7 +81,7 @@ tier is plenty) and [Node.js](https://nodejs.org/) installed.
    ```
    node scripts/seed-members.mjs --remote --url https://your-app.workers.dev --admin "You" -- "Alice" "Bob"
    ```
-   Each person gets a `?code=...` link. Copy them when they print - the raw codes
+    Each person gets a `?code=...` link. Copy them when they print - the raw codes
    are never stored (only their SHA-256 hashes go into the database).
 
 That's it. Send each member their link; tapping it logs them in.
@@ -99,7 +99,7 @@ Everything an admin configures lives in two places:
 | `GROUP_NAME` | `wrangler.jsonc` `vars` | Title, manifest, onboarding, invite copy. |
 | `THEME` | `wrangler.jsonc` `vars` | `warm` (default), `cool`, or `neutral`. Sets both light and dark palettes. |
 | App icon | `public/icon.jpg` | Replace with your own square image. |
-| `SESSION_SECRET` | `wrangler secret put` | HMAC signing key. A real secret, never in the repo. |
+| `SESSION_SECRET` | `wrangler secret put` | HMAC signing key, at least 32 characters. A real secret, never in the repo. |
 | `database_id` | `wrangler.jsonc` `d1_databases` | From `wrangler d1 create`. |
 
 Change a value, run `npm run deploy`, done - there's no build step or framework.

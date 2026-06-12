@@ -5,5 +5,5 @@
 #   npx wrangler secret put SESSION_SECRET
 # It is never read from this file or committed to the repo.
 
-# HMAC key used to sign session tokens. Any long, random string works locally.
-SESSION_SECRET=local-dev-secret-change-me
+# HMAC key used to sign session tokens. Use at least 32 characters locally too.
+SESSION_SECRET=local-dev-secret-change-me-at-least-32-chars

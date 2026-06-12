@@ -20,13 +20,15 @@ and tells security researchers how to report issues.
 ## Authentication
 
 - **Per-person invite codes, no passwords and no email.** Each member gets a
-  unique code (like `coral-7382`) baked into a personal link.
+  unique code (like `coral-maple-7382`) baked into a personal link.
 - Codes are stored only as **SHA-256 hashes**; the raw code is never written to
   the database or logs. If someone loses their code you cannot look it up, you
   issue a new one (see [ADMIN.md](ADMIN.md)).
-- Sessions are short HMAC-signed tokens kept in the browser's `localStorage`.
+- Sessions are HMAC-signed tokens kept in the browser's `localStorage`.
   The signing key, `SESSION_SECRET`, is a Cloudflare Worker secret, set with
   `wrangler secret put` and never committed to the repo.
+- Failed code attempts are rate-limited by HMAC-hashed client IP and attempted
+  code hash. Raw IPs and raw attempted codes are not stored in the limiter table.
 - Each member has a `token_version`. Bumping it instantly invalidates every
   active session for that person, which is how revocation and "give a new code"
   work.

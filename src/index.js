@@ -15,6 +15,10 @@ const TITLE_MAX = 120;
 const BODY_MAX = 4000;
 const UPDATE_MAX = 2000;
 const ANSWER_MAX = 2000;
+const SESSION_SECRET_MIN = 32;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_IP_MAX = 12;
+const LOGIN_CODE_MAX = 6;
 
 // Branding palettes. Keys match the THEME var; values are the page background
 // used for the manifest and the <meta theme-color> tints. The full colour sets
@@ -195,6 +199,11 @@ async function handleSession(request, env) {
   if (!code) return json({ error: "Missing code" }, 400);
 
   const tokenHash = await sha256Hex(code);
+  const subjects = await loginSubjects(env, request, tokenHash);
+  if (await isLoginLimited(env, subjects)) {
+    return json({ error: "Too many tries. Wait a few minutes and try again." }, 429);
+  }
+
   const member = await env.DB.prepare(`
     SELECT id, name, role, token_version, last_seen_at
     FROM members
@@ -202,10 +211,12 @@ async function handleSession(request, env) {
   `).bind(tokenHash).first();
 
   if (!member) {
+    await recordLoginFailure(env, subjects);
     // Generic message: do not reveal whether a code is valid.
     return json({ error: "That code was not recognized." }, 401);
   }
 
+  await clearLoginFailures(env, subjects);
   const token = await mintToken(env, member);
 
   // last_seen_at (the frozen "new to you" baseline) is set on a member's first
@@ -250,23 +261,25 @@ async function requireMember(request, env) {
 
 // HMAC token: base64url(payload) "." base64url(hmac). Payload = {memberId, tokenVersion, iat}.
 async function mintToken(env, member) {
+  const secret = requireSessionSecret(env);
   const payload = {
     memberId: member.id,
     tokenVersion: Number(member.token_version),
     iat: Date.now(),
   };
   const payloadB64 = b64urlEncode(JSON.stringify(payload));
-  const sig = await hmacHex(env.SESSION_SECRET, payloadB64);
+  const sig = await hmacHex(secret, payloadB64);
   return `${payloadB64}.${sig}`;
 }
 
 async function verifyToken(env, token) {
+  const secret = requireSessionSecret(env);
   const dot = token.lastIndexOf(".");
   if (dot < 0) return null;
   const payloadB64 = token.slice(0, dot);
   const sig = token.slice(dot + 1);
 
-  const expected = await hmacHex(env.SESSION_SECRET, payloadB64);
+  const expected = await hmacHex(secret, payloadB64);
   if (!timingSafeEqual(sig, expected)) return null;
 
   try {
@@ -276,6 +289,63 @@ async function verifyToken(env, token) {
   } catch {
     return null;
   }
+}
+
+function requireSessionSecret(env) {
+  const secret = typeof env.SESSION_SECRET === "string" ? env.SESSION_SECRET.trim() : "";
+  if (secret.length < SESSION_SECRET_MIN) {
+    throw new Error("SESSION_SECRET must be set to at least 32 characters.");
+  }
+  return secret;
+}
+
+function clientIp(request) {
+  const cfIp = request.headers.get("CF-Connecting-IP");
+  if (cfIp) return cfIp;
+  const forwarded = request.headers.get("X-Forwarded-For");
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return "local";
+}
+
+async function loginSubjects(env, request, tokenHash) {
+  const secret = requireSessionSecret(env);
+  const ip = clientIp(request);
+  const ipKey = await hmacHex(secret, `login-ip:${ip}`);
+  const codeKey = await hmacHex(secret, `login-code:${tokenHash}`);
+  return [`ip:${ipKey}`, `code:${codeKey}`];
+}
+
+async function isLoginLimited(env, subjects) {
+  const since = Date.now() - LOGIN_WINDOW_MS;
+  await env.DB.prepare(`DELETE FROM login_attempts WHERE created_at < ?`).bind(since).run();
+
+  const ipFailures = await countLoginFailures(env, subjects[0], since);
+  if (ipFailures >= LOGIN_IP_MAX) return true;
+
+  const codeFailures = await countLoginFailures(env, subjects[1], since);
+  return codeFailures >= LOGIN_CODE_MAX;
+}
+
+async function countLoginFailures(env, subject, since) {
+  const row = await env.DB.prepare(`
+    SELECT COUNT(*) AS n FROM login_attempts
+    WHERE subject = ? AND created_at >= ? AND succeeded = 0
+  `).bind(subject, since).first();
+  return toInt(row?.n);
+}
+
+async function recordLoginFailure(env, subjects) {
+  const now = Date.now();
+  await env.DB.batch(subjects.map((subject) => env.DB.prepare(`
+    INSERT INTO login_attempts (subject, created_at, succeeded)
+    VALUES (?, ?, 0)
+  `).bind(subject, now)));
+}
+
+async function clearLoginFailures(env, subjects) {
+  await env.DB.batch(subjects.map((subject) => env.DB.prepare(`
+    DELETE FROM login_attempts WHERE subject = ?
+  `).bind(subject)));
 }
 
 // The "new to you" baseline: the floor below which activity counts as already

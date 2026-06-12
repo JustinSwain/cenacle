@@ -2,7 +2,7 @@
 /**
  * seed-members.mjs - one-time, local invite-code provisioning.
  *
- * For each name you pass, it generates a short readable code (e.g. coral-7382),
+ * For each name you pass, it generates a readable code (e.g. coral-maple-7382),
  * prints "name -> code" for you to hand out, and writes ONLY the SHA-256
  * token_hash into D1. The raw code is never stored anywhere by this script,
  * so copy the printed codes before they scroll away.
@@ -68,9 +68,11 @@ function inviteBase({ url }) {
 }
 
 function makeCode() {
-  const word = WORDS[randomInt(WORDS.length)];
+  const first = WORDS[randomInt(WORDS.length)];
+  let second;
+  do { second = WORDS[randomInt(WORDS.length)]; } while (second === first);
   const num = String(randomInt(1000, 10000)); // 4 digits, no leading zero
-  return `${word}-${num}`;
+  return `${first}-${second}-${num}`;
 }
 
 function sha256Hex(text) {
