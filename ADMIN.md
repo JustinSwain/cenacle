@@ -112,26 +112,22 @@ npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET name =
 
 ### Give someone a new code (they lost it / it leaked)
 
-This is the closest thing to a password reset. Two steps: pick a new code,
-store its hash, and bump their `token_version` so the old code stops working.
+This is the closest thing to a password reset. The script generates a fresh
+code, stores only its hash, bumps `token_version` so old sessions stop working,
+and prints the new link to hand out:
 
-1. Choose a new code, e.g. `river-maple-5093`, and compute its hash:
+```
+node scripts/reset-member-code.mjs --remote --url https://your-group.example.workers.dev "Alice"
+```
 
-   ```
-   node -e "console.log(require('crypto').createHash('sha256').update('river-maple-5093').digest('hex'))"
-   ```
+If two people have the same name, use the `id` from the member list:
 
-   That prints a long hex string - copy it.
+```
+node scripts/reset-member-code.mjs --remote --url https://your-group.example.workers.dev --id 5
+```
 
-2. Save the hash and invalidate the old code in one go (paste the hash where
-   shown):
-
-   ```
-   npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET token_hash = 'PASTE_HASH_HERE', token_version = token_version + 1 WHERE name = 'Alice';"
-   ```
-
-3. Send them their new link (use your own deploy URL):
-   `https://your-group.example.workers.dev/?code=river-maple-5093`
+As with the seed script, the raw code is never saved. Copy the printed link/code
+before closing the terminal.
 
 ### Lock someone out immediately (revoke access)
 
@@ -322,7 +318,7 @@ npm run deploy
 | Add an admin | terminal | `node scripts/seed-members.mjs --remote --admin "Name"` |
 | List members | terminal | `SELECT ... FROM members` |
 | Make someone admin | terminal | `UPDATE members SET role='admin' ...` |
-| Give a new code | terminal | hash new code -> `UPDATE ... token_hash, token_version+1` |
+| Give a new code | terminal | `node scripts/reset-member-code.mjs --remote "Name"` |
 | Lock someone out | terminal | `UPDATE members SET token_version = token_version + 1 ...` |
 | Log everyone out | terminal | `wrangler secret put SESSION_SECRET` |
 | Remove a junk post | **app** | open post -> **Remove post** |

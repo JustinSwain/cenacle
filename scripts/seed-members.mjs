@@ -21,23 +21,15 @@
  * auth. Add --remote to target the deployed DB instead of local.
  */
 
-import { createHash, randomInt } from "node:crypto";
-import { execSync } from "node:child_process";
-import { writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-// Must match `database_name` in wrangler.jsonc. Override per-run with --db or
-// the D1_DATABASE env var if you renamed the database.
-const DB_NAME = "cenacle_db";
-
-const URL_PLACEHOLDER = "<your-app-url>";
-
-const WORDS = [
-  "coral", "amber", "maple", "river", "cedar", "ember", "lunar", "pearl",
-  "olive", "raven", "slate", "willow", "cobalt", "saffron", "indigo", "hazel",
-  "aspen", "flint", "ivory", "marble", "onyx", "quartz", "topaz", "violet",
-];
+import {
+  DB_NAME,
+  URL_PLACEHOLDER,
+  inviteBase,
+  makeCode,
+  runSql,
+  sha256Hex,
+  sqlEscape,
+} from "./invite-utils.mjs";
 
 function parseArgs(argv) {
   let remote = false;
@@ -59,42 +51,6 @@ function parseArgs(argv) {
   }
 
   return { remote, url, db, adminNames, memberNames };
-}
-
-// Trim a trailing slash so we can append "/?code=..." cleanly.
-function inviteBase({ url }) {
-  const base = url || process.env.APP_URL || URL_PLACEHOLDER;
-  return base.replace(/\/+$/, "");
-}
-
-function makeCode() {
-  const first = WORDS[randomInt(WORDS.length)];
-  let second;
-  do { second = WORDS[randomInt(WORDS.length)]; } while (second === first);
-  const num = String(randomInt(1000, 10000)); // 4 digits, no leading zero
-  return `${first}-${second}-${num}`;
-}
-
-function sha256Hex(text) {
-  return createHash("sha256").update(text).digest("hex");
-}
-
-function sqlEscape(s) {
-  return s.replace(/'/g, "''");
-}
-
-// Write the SQL to a temp file and use --file. Passing SQL via --command gets
-// re-split by the shell on Windows (spaces become separate args), so a file is
-// the reliable path.
-function runSql(sql, remote, dbName) {
-  const tmp = join(tmpdir(), `seed-${Date.now()}.sql`);
-  writeFileSync(tmp, sql, "utf8");
-  try {
-    const target = remote ? "--remote" : "--local";
-    execSync(`npx wrangler d1 execute ${dbName} ${target} --yes --file "${tmp}"`, { stdio: "inherit" });
-  } finally {
-    rmSync(tmp, { force: true });
-  }
 }
 
 function main() {
@@ -132,7 +88,7 @@ function main() {
     values.join(", ") + ";";
 
   console.log(`\nSeeding ${people.length} member(s) into ${dbName} (${remote ? "remote" : "local"})...\n`);
-  runSql(sql, remote, dbName);
+  runSql(sql, { remote, dbName, label: "seed-members" });
 
   console.log("\n=== HAND THESE OUT (not stored anywhere - copy now) ===\n");
   for (const { name, role, code } of handouts) {
