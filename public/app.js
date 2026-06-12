@@ -407,7 +407,7 @@ function renderCard(req) {
 
   const hint = elem("p", "card-hint", req.status === "answered"
     ? "Tap to read the full story"
-    : "Tap to read, comment, or move to the Prayer Log");
+    : "Tap to open");
   li.appendChild(hint);
 
   // Open detail when tapping the card body (but not the pray button).
@@ -743,8 +743,9 @@ function renderDetail(req) {
     modal.appendChild(renderUpdates(req));
 
     // Add an update.
-    modal.appendChild(renderUpdateForm(req));
-
+    if (req.status != "answered") {
+      modal.appendChild(renderUpdateForm(req));
+    }
     // Author-only actions on open requests.
     if (req.isMine && req.status === "open") {
       modal.appendChild(renderAuthorActions(req));
@@ -1070,14 +1071,16 @@ function codeCopyBlock(code) {
   return box;
 }
 
-function addToHomeBlock() {
+function addToHomeBlock(show_msg) {
   const wrap = elem("div", "home-help");
   wrap.appendChild(elem("p", "info-lead",
     `Add ${GROUP_NAME} to your home screen so you can open it in one tap.`));
-  wrap.appendChild(elem("p", "info-note",
-    "On iPhone the home-screen app asks for your code the first time you open " +
-    "it. Copy your code now, then paste it once there — after that you'll " +
-    "stay signed in."));
+  if (!show_msg) {
+    wrap.appendChild(elem("p", "info-note",
+      "On iPhone the home-screen app asks for your code the first time you open " +
+      "it. Copy your code now, then paste it once there — after that you'll " +
+      "stay signed in."));
+  }
   if (lastCode) wrap.appendChild(codeCopyBlock(lastCode));
 
   const ios = elem("div", "home-steps");
@@ -1194,7 +1197,7 @@ function openHelp() {
 
     const home = elem("section", "help-section");
     home.appendChild(elem("h3", "help-heading", "Open it like an app"));
-    home.appendChild(addToHomeBlock());
+    home.appendChild(addToHomeBlock(show_msg=1));
     modal.appendChild(home);
 
     const account = elem("section", "help-section");
