@@ -561,7 +561,7 @@ async function handleListRequests(request, env, member) {
   const { results } = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
-      r.is_anonymous, r.created_at, r.answered_at, r.answer_note, r.edited_at,
+      r.created_at, r.answered_at, r.answer_note, r.edited_at,
       m.name AS author_name,
       (SELECT COUNT(DISTINCT p.member_id) FROM prayers p WHERE p.request_id = r.id) AS distinct_prayers,
       (SELECT COUNT(*)                    FROM prayers p WHERE p.request_id = r.id) AS total_prayers,
@@ -590,7 +590,7 @@ async function handleRequestDetail(env, member, id) {
   const row = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
-      r.is_anonymous, r.created_at, r.answered_at, r.answer_note, r.edited_at,
+      r.created_at, r.answered_at, r.answer_note, r.edited_at,
       m.name AS author_name,
       (SELECT COUNT(DISTINCT p.member_id) FROM prayers p WHERE p.request_id = r.id) AS distinct_prayers,
       (SELECT COUNT(*)                    FROM prayers p WHERE p.request_id = r.id) AS total_prayers,
@@ -691,16 +691,15 @@ async function handleCreateRequest(request, env, member) {
   const title = cleanText(body?.title, TITLE_MAX);
   const text = cleanText(body?.body, BODY_MAX);
   const category = VALID_CATEGORIES.has(body?.category) ? body.category : "general";
-  const isAnonymous = body?.isAnonymous ? 1 : 0;
 
   if (!title) return json({ error: "Please add a short title." }, 400);
   if (!text) return json({ error: "Please add a few words about your request." }, 400);
 
   const now = Date.now();
   const result = await env.DB.prepare(`
-    INSERT INTO requests (author_id, title, body, category, status, is_anonymous, created_at)
-    VALUES (?, ?, ?, ?, 'open', ?, ?)
-  `).bind(member.id, title, text, category, isAnonymous, now).run();
+    INSERT INTO requests (author_id, title, body, category, status, created_at)
+    VALUES (?, ?, ?, ?, 'open', ?)
+  `).bind(member.id, title, text, category, now).run();
 
   const id = result.meta?.last_row_id;
   return handleRequestDetail(env, member, id);
@@ -745,7 +744,6 @@ async function handleEditRequest(request, env, member, id) {
   const title = cleanText(body?.title, TITLE_MAX);
   const text = cleanText(body?.body, BODY_MAX);
   const category = VALID_CATEGORIES.has(body?.category) ? body.category : "general";
-  const isAnonymous = body?.isAnonymous ? 1 : 0;
 
   if (!title) return json({ error: "Please add a short title." }, 400);
   if (!text) return json({ error: "Please add a few words about your request." }, 400);
@@ -761,9 +759,9 @@ async function handleEditRequest(request, env, member, id) {
 
   await env.DB.prepare(`
     UPDATE requests
-    SET title = ?, body = ?, category = ?, is_anonymous = ?, edited_at = ?
+    SET title = ?, body = ?, category = ?, edited_at = ?
     WHERE id = ?
-  `).bind(title, text, category, isAnonymous, Date.now(), id).run();
+  `).bind(title, text, category, Date.now(), id).run();
 
   return handleRequestDetail(env, member, id);
 }
@@ -818,13 +816,8 @@ function canModerate(member, req) {
   return req.author_id === member.id || member.role === "admin";
 }
 
-// Anonymity-respecting card serializer (SEC4): when is_anonymous and the
-// viewer is neither the author nor an admin, strip author identity.
 function serializeCard(row, member, baseline) {
-  const isAnon = Number(row.is_anonymous) === 1;
   const isOwner = row.author_id === member.id;
-  const isAdmin = member.role === "admin";
-  const hideAuthor = isAnon && !isOwner && !isAdmin;
 
   const newState = computeNewState(row, member, baseline);
 
@@ -834,7 +827,6 @@ function serializeCard(row, member, baseline) {
     snippet: snippet(row.body),
     category: row.category,
     status: row.status,
-    isAnonymous: isAnon,
     createdAt: toInt(row.created_at),
     editedAt: row.edited_at != null ? toInt(row.edited_at) : null,
     answeredAt: row.answered_at != null ? toInt(row.answered_at) : null,
@@ -848,14 +840,9 @@ function serializeCard(row, member, baseline) {
     isNew: newState.isNew,
     newComments: newState.newComments,
     newCommentAuthor: newState.newCommentAuthor,
+    author: row.author_name,
+    authorId: row.author_id,
   };
-
-  if (hideAuthor) {
-    card.author = "Anonymous";
-  } else {
-    card.author = row.author_name;
-    card.authorId = row.author_id;
-  }
 
   return card;
 }

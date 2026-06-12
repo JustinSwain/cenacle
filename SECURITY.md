@@ -13,8 +13,9 @@ and tells security researchers how to report issues.
 - **Cloudflare** runs the Worker and stores the D1 database, so they are a
   processor in the usual cloud sense. No other third party is involved: no
   analytics, no trackers, no external calls carrying user data.
-- **Members** see each other's active and Prayer Log requests, who has prayed, and
-  group stats. Admins additionally see the Stats panel and can remove any post.
+- **Members** see each other's active and Prayer Log requests, who wrote them,
+  who has prayed, and group stats. Admins additionally see the Stats panel and
+  can remove any post.
 
 ## Authentication
 
@@ -30,21 +31,11 @@ and tells security researchers how to report issues.
   active session for that person, which is how revocation and "give a new code"
   work.
 
-## Anonymity (read this carefully)
+## Named participation
 
-A request can be posted **anonymously**. The guarantee is:
-
-- Anonymous requests **never leak the author's name or id to non-authors** in
-  any view or API response (this is invariant SEC4 below).
-
-But note the deliberate, important nuance:
-
-- **The "who's praying" list is not anonymous.** When you tap "I prayed" on any
-  request, your name is shown to others on that request, regardless of whether
-  the request itself was posted anonymously. Praying for a request reveals that
-  *you* prayed; it does not reveal who *wrote* an anonymous request.
-
-Make sure your group understands this distinction before relying on anonymity.
+Cenacle does not support anonymous posts. This is intentional: the app is for a
+known small group, not a public confession box. If a request is too private to
+attach your name to, it should be shared another way instead of stored here.
 
 ## Privacy posture
 
@@ -65,8 +56,8 @@ These are enforced in the code and should not be weakened by changes:
   public navigation.
 - **SEC3 - Secrets stay secret.** Raw invite codes are never stored (only
   SHA-256 hashes). `SESSION_SECRET` is a Worker secret, never committed.
-- **SEC4 - Anonymity holds.** Anonymous requests never expose `author_id` or the
-  author's name to non-authors in any endpoint.
+- **SEC4 - Named participation.** Requests, prayers, and updates are attached to
+  member names within the group.
 - **SEC5 - Untrusted input.** All text inputs are validated and length-capped
   server-side. User content is treated as untrusted and escaped on render; never
   inserted via `innerHTML`.

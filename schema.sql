@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS requests (
   body         TEXT NOT NULL,
   category     TEXT NOT NULL DEFAULT 'general',  -- general|health|family|work|spiritual|praise
   status       TEXT NOT NULL DEFAULT 'open',     -- open|answered|archived
-  is_anonymous INTEGER NOT NULL DEFAULT 0,       -- 1 = author hidden from group, still attributed internally
+  is_anonymous INTEGER NOT NULL DEFAULT 0,       -- legacy column; anonymous posts are no longer supported
   created_at   INTEGER NOT NULL,
   answered_at  INTEGER,
   answer_note  TEXT

@@ -27,8 +27,6 @@ anyone else's.
   counts.
 - **Prayer Log** - move a request out of the active list with a closing note (a
   final update, praise report, or reason it no longer needs to stay active).
-- **Anonymous requests** - post without your name attached (see the nuance in
-  [SECURITY.md](SECURITY.md)).
 - **Updates thread** - add follow-ups to a request over time.
 - **Admin stats & moderation** - a group overview and the ability to remove any
   post.

@@ -562,15 +562,6 @@ function openRequestForm({ heading, submitLabel, initial, onSubmit }) {
     if (init.category) select.value = init.category;
     form.appendChild(labeled("Category", select));
 
-    const anonWrap = elem("label", "checkbox-row");
-    const anon = document.createElement("input");
-    anon.type = "checkbox";
-    anon.name = "anonymous";
-    if (init.isAnonymous) anon.checked = true;
-    anonWrap.appendChild(anon);
-    anonWrap.appendChild(text(" Post anonymously (your name is hidden from the group)"));
-    form.appendChild(anonWrap);
-
     const errLine = elem("p", "form-error");
     errLine.hidden = true;
     form.appendChild(errLine);
@@ -591,7 +582,6 @@ function openRequestForm({ heading, submitLabel, initial, onSubmit }) {
         title: titleField.value.trim(),
         body: bodyField.value.trim(),
         category: select.value,
-        isAnonymous: anon.checked,
       };
       if (!payload.title || !payload.body) {
         showFormError(errLine, "Please add a title and a few words.");
@@ -621,7 +611,6 @@ function openEditForm(req) {
       title: req.title,
       body: req.body,
       category: req.category,
-      isAnonymous: req.isAnonymous,
     },
     onSubmit: async (payload) => {
       const data = await api(`/requests/${req.id}/edit`, { method: "POST", body: payload });
