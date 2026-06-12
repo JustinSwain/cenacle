@@ -50,6 +50,70 @@ function validateDbName(dbName) {
   }
 }
 
+function jsonCandidateFrom(text, start) {
+  const open = text[start];
+  if (open !== "[" && open !== "{") return null;
+
+  const stack = [open];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start + 1; i < text.length; i += 1) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "[" || ch === "{") {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === "]" || ch === "}") {
+      const last = stack.pop();
+      if ((ch === "]" && last !== "[") || (ch === "}" && last !== "{")) return null;
+      if (stack.length === 0) return text.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+export function parseWranglerJson(stdout) {
+  const text = String(stdout || "").trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Remote D1 can print progress lines before the --json payload. Find the
+    // first balanced JSON object/array that parses cleanly.
+  }
+
+  for (let i = 0; i < text.length; i += 1) {
+    const candidate = jsonCandidateFrom(text, i);
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Keep scanning; progress text may contain brackets too.
+    }
+  }
+
+  throw new Error("Wrangler did not return parseable JSON.");
+}
+
 // Write the SQL to a temp file and use --file. Passing SQL via --command gets
 // re-split by the shell on Windows (spaces become separate args), so a file is
 // the reliable path.
@@ -81,7 +145,7 @@ export function runSql(sql, { remote, dbName, json = false, label = "invite" }) 
       },
       stdio: json ? ["ignore", "pipe", "inherit"] : "inherit",
     });
-    return json ? JSON.parse(stdout) : undefined;
+    return json ? parseWranglerJson(stdout) : undefined;
   } finally {
     rmSync(tmp, { force: true });
   }
