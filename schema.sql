@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 
 CREATE INDEX IF NOT EXISTS idx_prayers_request ON prayers(request_id);
 CREATE INDEX IF NOT EXISTS idx_prayers_member  ON prayers(member_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prayers_request_member_unique
+  ON prayers(request_id, member_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_updates_request ON updates(request_id);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_subject_time

@@ -724,19 +724,13 @@ async function handlePray(env, member, id) {
   }
 
   const now = Date.now();
-  // One prayer signal per member per request: if this member has already prayed
-  // for it, do not insert again. This keeps prayer counts honest (a member can't
-  // inflate them by tapping repeatedly) and makes the action idempotent.
-  const existing = await env.DB.prepare(`
-    SELECT 1 FROM prayers WHERE request_id = ? AND member_id = ? LIMIT 1
-  `).bind(id, member.id).first();
-
-  if (!existing) {
-    await env.DB.prepare(`
-      INSERT INTO prayers (request_id, member_id, created_at)
-      VALUES (?, ?, ?)
-    `).bind(id, member.id, now).run();
-  }
+  // One prayer signal per member per request. The unique index enforces this
+  // under concurrent taps; INSERT OR IGNORE keeps the endpoint idempotent.
+  const result = await env.DB.prepare(`
+    INSERT OR IGNORE INTO prayers (request_id, member_id, created_at)
+    VALUES (?, ?, ?)
+  `).bind(id, member.id, now).run();
+  const inserted = toInt(result.meta?.changes) > 0;
 
   const counts = await env.DB.prepare(`
     SELECT
@@ -749,7 +743,7 @@ async function handlePray(env, member, id) {
     distinctPrayers: toInt(counts?.distinct_prayers),
     totalPrayers: toInt(counts?.total_prayers),
     hasViewerPrayed: true,
-    alreadyPrayed: Boolean(existing),
+    alreadyPrayed: !inserted,
   });
 }
 
