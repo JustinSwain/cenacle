@@ -2,8 +2,14 @@
 /**
  * reset-member-code.mjs - generate a fresh invite code for an existing member.
  *
- * The script stores only the SHA-256 hash in D1, bumps token_version to sign
- * out existing sessions, and prints the raw code exactly once for you to share.
+ * This automates the three manual steps of a "password reset": pick a new code,
+ * hash it, and UPDATE the member's row. It stores only the SHA-256 hash, bumps
+ * token_version to sign out existing sessions, and prints the raw code once.
+ *
+ * It runs a single UPDATE and lets wrangler print its own result. If wrangler
+ * reports "Rows written: 1" the reset worked; "0" means the name/id matched no
+ * one (nothing changed) - rerun with the right name or --id. The new code is
+ * printed only after wrangler exits successfully.
  *
  * Usage (from the repo root):
  *   node scripts/reset-member-code.mjs "Alice"
@@ -74,26 +80,19 @@ function parseArgs(argv) {
   };
 }
 
-function outputRows(output, index) {
-  return Array.isArray(output?.[index]?.results) ? output[index].results : [];
-}
-
 function targetLabel({ id, name }) {
   return id ? `id ${id}` : `"${name}"`;
 }
 
 function buildSql({ id, name, hash }) {
-  const lookup = id ? `id = ${id}` : `name = '${sqlEscape(name)}'`;
-  const updateLookup = id
-    ? lookup
-    : `${lookup} AND (SELECT COUNT(*) FROM members WHERE ${lookup}) = 1`;
-
+  const where = id ? `id = ${id}` : `name = '${sqlEscape(name)}'`;
+  // The trailing changes() prints "members_updated": 1 (or 0) in wrangler's own
+  // output, so you can see whether a row matched without parsing anything.
   return [
-    `SELECT COUNT(*) AS matches FROM members WHERE ${lookup};`,
     "UPDATE members",
     `SET token_hash = '${hash}', token_version = token_version + 1`,
-    `WHERE ${updateLookup}`,
-    "RETURNING id, name, role, token_version;",
+    `WHERE ${where};`,
+    "SELECT changes() AS members_updated;",
   ].join("\n") + "\n";
 }
 
@@ -119,42 +118,22 @@ function main() {
   const sql = buildSql({ ...args, hash });
 
   console.log(`\nResetting invite code for ${targetLabel(args)} in ${dbName} (${args.remote ? "remote" : "local"})...\n`);
-  let result;
   try {
-    result = runSql(sql, {
-      remote: args.remote,
-      dbName,
-      json: true,
-      label: "reset-member-code",
-    });
+    runSql(sql, { remote: args.remote, dbName, label: "reset-member-code" });
   } catch (err) {
-    console.error(`Reset failed: ${err.message}`);
+    console.error(`\nReset failed - wrangler reported an error. Nothing was changed.`);
+    if (err.message) console.error(err.message);
     process.exit(1);
   }
 
-  const matches = Number(outputRows(result, 0)[0]?.matches || 0);
-  const updated = outputRows(result, 1);
-
-  if (updated.length !== 1) {
-    if (matches === 0) {
-      console.error(`No member found for ${targetLabel(args)}. Nothing was changed.`);
-    } else if (matches > 1) {
-      console.error(`More than one member is named "${args.name}". Nothing was changed.`);
-      console.error("Run the member list command, then retry with --id <member id>.");
-    } else {
-      console.error("Wrangler did not return the updated member. Nothing was changed.");
-    }
-    process.exit(1);
-  }
-
-  const member = updated[0];
-  const tag = member.role === "admin" ? " [admin]" : "";
-
-  console.log(`Reset ${member.name}${tag} (id ${member.id}); token version is now ${member.token_version}.`);
-  console.log("Their old link and current sessions are no longer valid.\n");
+  // Wrangler printed "members_updated": 1 (or 0) in its output just above.
+  // The code below is only live in the database if it updated 1 row.
+  console.log(`\nDone. Check the "members_updated" value in wrangler's output above:`);
+  console.log(`  1 = reset worked; their old link and sessions are now dead.`);
+  console.log(`  0 = no member matched ${targetLabel(args)}; nothing changed, the code below is NOT active.\n`);
 
   console.log("=== HAND THIS OUT (not stored anywhere - copy now) ===\n");
-  console.log(`  ${member.name}${tag}: ${base}/?code=${code}`);
+  console.log(`  ${args.name ? args.name : `member ${args.id}`}: ${base}/?code=${code}`);
   console.log(`      code: ${code}\n`);
   if (base === URL_PLACEHOLDER) {
     console.log(`(Replace ${URL_PLACEHOLDER} with your deploy URL, or pass --url / set APP_URL.)\n`);
