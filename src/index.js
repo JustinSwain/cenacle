@@ -33,7 +33,13 @@ function readConfig(env) {
   const groupName = (env.GROUP_NAME && String(env.GROUP_NAME).trim()) || "Prayer";
   let theme = (env.THEME && String(env.THEME).trim().toLowerCase()) || "warm";
   if (!PALETTES[theme]) theme = "warm";
-  return { groupName, theme };
+  const showPublicPrayerCounts = envFlag(env.PUBLIC_PRAYER_COUNTS);
+  return { groupName, theme, showPublicPrayerCounts };
+}
+
+function envFlag(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 export default {
@@ -92,10 +98,11 @@ function manifestResponse(env) {
 // Stream the static HTML through HTMLRewriter, injecting window.__CONFIG__ and
 // applying the palette so the page is branded before the first paint.
 function rewriteHtml(res, env) {
-  const { groupName, theme } = readConfig(env);
+  const config = readConfig(env);
+  const { groupName, theme } = config;
   const colors = PALETTES[theme];
   // Escape "<" so the group name can't break out of the inline <script>.
-  const payload = JSON.stringify({ groupName, theme }).replace(/</g, "\\u003c");
+  const payload = JSON.stringify(config).replace(/</g, "\\u003c");
 
   return new HTMLRewriter()
     .on("html", {
@@ -609,6 +616,7 @@ async function handleListRequests(request, env, member) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status") || "open";
   const baseline = await ensureBaseline(env, member);
+  const config = readConfig(env);
 
   let where;
   let whereBinds;
@@ -651,12 +659,13 @@ async function handleListRequests(request, env, member) {
     LIMIT 200
   `).bind(member.id, member.id, baseline, member.id, member.id, ...whereBinds).all();
 
-  const cards = (results ?? []).map((row) => serializeCard(row, member, baseline));
+  const cards = (results ?? []).map((row) => serializeCard(row, member, baseline, config));
   return json({ requests: cards });
 }
 
 async function handleRequestDetail(env, member, id) {
   const baseline = await ensureBaseline(env, member);
+  const config = readConfig(env);
   const row = await env.DB.prepare(`
     SELECT
       r.id, r.author_id, r.title, r.body, r.category, r.status,
@@ -682,18 +691,22 @@ async function handleRequestDetail(env, member, id) {
     ORDER BY u.created_at ASC
   `).bind(id).all();
 
-  // Prayer-ers are always named to each other (independent of request anonymity).
-  // Most recent first by that member's latest prayer.
-  const { results: prayingRows } = await env.DB.prepare(`
-    SELECT p.member_id, m.name, MAX(p.created_at) AS last_at
-    FROM prayers p
-    JOIN members m ON m.id = p.member_id
-    WHERE p.request_id = ?
-    GROUP BY p.member_id, m.name
-    ORDER BY last_at DESC
-  `).bind(id).all();
+  let prayingRows = [];
+  if (row.author_id === member.id) {
+    // The author sees names for encouragement. Other members only see their own
+    // prayed state unless the group has opted into public counts.
+    const namedPrayers = await env.DB.prepare(`
+      SELECT p.member_id, m.name, MAX(p.created_at) AS last_at
+      FROM prayers p
+      JOIN members m ON m.id = p.member_id
+      WHERE p.request_id = ?
+      GROUP BY p.member_id, m.name
+      ORDER BY last_at DESC
+    `).bind(id).all();
+    prayingRows = namedPrayers.results ?? [];
+  }
 
-  const card = serializeCard(row, member, baseline);
+  const card = serializeCard(row, member, baseline, config);
   card.body = String(row.body ?? "");
   card.updates = (updateRows ?? []).map((u) => ({
     id: u.id,
@@ -714,6 +727,7 @@ async function handleRequestDetail(env, member, id) {
 }
 
 async function handlePray(env, member, id) {
+  const config = readConfig(env);
   const req = await env.DB.prepare(`SELECT id, status FROM requests WHERE id = ?`)
     .bind(id).first();
   if (!req || req.status === "archived") {
@@ -739,9 +753,13 @@ async function handlePray(env, member, id) {
     FROM prayers WHERE request_id = ?
   `).bind(id).first();
 
+  const distinctPrayers = toInt(counts?.distinct_prayers);
+  const totalPrayers = toInt(counts?.total_prayers);
+
   return json({
-    distinctPrayers: toInt(counts?.distinct_prayers),
-    totalPrayers: toInt(counts?.total_prayers),
+    distinctPrayers: config.showPublicPrayerCounts ? distinctPrayers : null,
+    totalPrayers: config.showPublicPrayerCounts ? totalPrayers : null,
+    hasPrayers: true,
     hasViewerPrayed: true,
     alreadyPrayed: !inserted,
   });
@@ -783,13 +801,16 @@ async function handleAddUpdate(request, env, member, id) {
   const text = cleanText(body?.body, UPDATE_MAX);
   if (!text) return json({ error: "Please write something to share." }, 400);
 
-  const req = await env.DB.prepare(`SELECT id, status FROM requests WHERE id = ?`)
+  const req = await env.DB.prepare(`SELECT id, author_id, status FROM requests WHERE id = ?`)
     .bind(id).first();
   if (!req || req.status === "archived") {
     return json({ error: "Not found" }, 404);
   }
-  if (req.status !== "open") {
-    return json({ error: "This request is already in the Prayer Log." }, 409);
+  if (req.status === "answered" && req.author_id !== member.id) {
+    return json({ error: "Only the author can update a logged request." }, 403);
+  }
+  if (req.status !== "open" && req.status !== "answered") {
+    return json({ error: "This request cannot be updated." }, 409);
   }
 
   await env.DB.prepare(`
@@ -800,9 +821,9 @@ async function handleAddUpdate(request, env, member, id) {
   return handleRequestDetail(env, member, id);
 }
 
-// Author-only (admins too) edit of a request's title/body/category/anonymity.
-// Stamps edited_at so the UI can show the post was revised. Prayers and updates
-// are untouched; archived requests cannot be edited.
+// Author-only edit of an active request's title/body/category/anonymity.
+// Stamps edited_at so the UI can show the post was revised. Logged requests
+// stay fixed; authors can add updates instead.
 async function handleEditRequest(request, env, member, id) {
   let body;
   try {
@@ -823,8 +844,11 @@ async function handleEditRequest(request, env, member, id) {
   if (!req || req.status === "archived") {
     return json({ error: "Not found" }, 404);
   }
-  if (!canModerate(member, req)) {
+  if (req.author_id !== member.id) {
     return json({ error: "Only the author can edit this." }, 403);
+  }
+  if (req.status !== "open") {
+    return json({ error: "Requests in the Prayer Log cannot be edited. Add an update instead." }, 409);
   }
 
   await env.DB.prepare(`
@@ -874,7 +898,7 @@ async function handleArchive(env, member, id) {
     return json({ error: "Not found" }, 404);
   }
   if (!canModerate(member, req)) {
-    return json({ error: "Only the author can archive this." }, 403);
+    return json({ error: "Only the author or an admin can remove this." }, 403);
   }
 
   await env.DB.prepare(`UPDATE requests SET status = 'archived' WHERE id = ?`)
@@ -883,14 +907,17 @@ async function handleArchive(env, member, id) {
   return json({ ok: true, archived: true });
 }
 
-// Author-only for now; admins (role='admin') are honored too so moderation can
-// be turned on later without an API change.
+// Owners can manage their own posts; admins can moderate any post.
 function canModerate(member, req) {
   return req.author_id === member.id || member.role === "admin";
 }
 
-function serializeCard(row, member, baseline) {
+function serializeCard(row, member, baseline, config = {}) {
   const isOwner = row.author_id === member.id;
+  const viewerPrayers = toInt(row.viewer_prayers);
+  const distinctPrayers = toInt(row.distinct_prayers);
+  const totalPrayers = toInt(row.total_prayers);
+  const showPublicPrayerCounts = !!config.showPublicPrayerCounts;
 
   const newState = computeNewState(row, member, baseline);
 
@@ -904,10 +931,12 @@ function serializeCard(row, member, baseline) {
     editedAt: row.edited_at != null ? toInt(row.edited_at) : null,
     answeredAt: row.answered_at != null ? toInt(row.answered_at) : null,
     answerNote: row.answer_note != null ? String(row.answer_note) : null,
-    distinctPrayers: toInt(row.distinct_prayers),
-    totalPrayers: toInt(row.total_prayers),
-    hasViewerPrayed: toInt(row.viewer_prayers) > 0,
+    distinctPrayers: showPublicPrayerCounts ? distinctPrayers : null,
+    totalPrayers: showPublicPrayerCounts ? totalPrayers : null,
+    hasPrayers: (isOwner || showPublicPrayerCounts) ? distinctPrayers > 0 : viewerPrayers > 0,
+    hasViewerPrayed: viewerPrayers > 0,
     isMine: isOwner,
+    canSeePrayerNames: isOwner,
     // "New to you" highlight: whether this card carries unseen activity, and if
     // that activity is a comment, who left it (so the card can say what changed).
     isNew: newState.isNew,

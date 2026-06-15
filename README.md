@@ -23,8 +23,9 @@ anyone else's.
   passwords or email. Revoke or reissue access in one command.
 - **Active / Prayer Log / Mine feeds** - browse current requests, look back on
   the ones that have closed, and find your own.
-- **"I prayed" taps** - let people know they're being prayed for, with simple
-  counts.
+- **"I prayed" taps** - let people know they're being prayed for without turning
+  prayer into a scoreboard. Authors see the names of people who prayed; everyone
+  else sees only their own prayed state. Public counts are opt-in.
 - **Prayer Log** - move a request out of the active list with a closing note (a
   final update, praise report, or reason it no longer needs to stay active).
 - **Updates thread** - add follow-ups to a request over time.
@@ -66,7 +67,8 @@ tier is plenty) and [Node.js](https://nodejs.org/) installed.
    ```jsonc
    "vars": {
      "GROUP_NAME": "Grace Group",
-     "THEME": "warm"
+     "THEME": "warm",
+     "PUBLIC_PRAYER_COUNTS": false
    }
    ```
    Optionally drop your own square image in at `public/icon.jpg`.
@@ -98,6 +100,7 @@ Everything an admin configures lives in two places:
 |---|---|---|
 | `GROUP_NAME` | `wrangler.jsonc` `vars` | Title, manifest, onboarding, invite copy. |
 | `THEME` | `wrangler.jsonc` `vars` | `warm` (default), `cool`, or `neutral`. Sets both light and dark palettes. |
+| `PUBLIC_PRAYER_COUNTS` | `wrangler.jsonc` `vars` | `false` by default. Set to `true` only if the group intentionally wants prayer counts visible on everyone's posts. |
 | App icon | `public/icon.jpg` | Replace with your own square image. |
 | `SESSION_SECRET` | `wrangler secret put` | HMAC signing key, at least 32 characters. A real secret, never in the repo. |
 | `database_id` | `wrangler.jsonc` `d1_databases` | From `wrangler d1 create`. |

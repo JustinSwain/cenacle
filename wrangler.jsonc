@@ -19,10 +19,14 @@
 	 * needed. GROUP_NAME is shown as the app title and in onboarding copy.
 	 * THEME picks a colour palette: "warm" (default), "cool", or "neutral".
 	 * Both light and dark modes follow the chosen palette.
+	 * PUBLIC_PRAYER_COUNTS can be set to true if a group intentionally wants
+	 * prayer counts visible on everyone's posts. The default keeps counts private:
+	 * authors see the names of people who prayed; others see only their own state.
 	 */
 	"vars": {
 		"GROUP_NAME": "Prayer",
-		"THEME": "warm"
+		"THEME": "warm",
+		"PUBLIC_PRAYER_COUNTS": false
 	},
 	/**
 	 * Static assets (the frontend in public/) are served from the same origin

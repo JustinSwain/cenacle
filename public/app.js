@@ -1,5 +1,5 @@
 /* Prayer app frontend. Login gate + feed (Active/Prayer Log/Mine), create form,
-   request detail with updates thread and author-only move-to-Prayer-Log/archive. */
+   request detail with updates thread and author-only Prayer Log/remove actions. */
 
 const API_BASE = "/api";
 const SESSION_KEY = "cenacle_session_v1";
@@ -11,6 +11,8 @@ const FEED_CACHE_KEY = "cenacle_feed_v1";
 // when the page is served as a raw static asset without the Worker.
 const CONFIG = (window.__CONFIG__ && typeof window.__CONFIG__ === "object") ? window.__CONFIG__ : {};
 const GROUP_NAME = (typeof CONFIG.groupName === "string" && CONFIG.groupName.trim()) || "Prayer";
+const SHOW_PUBLIC_PRAYER_COUNTS = CONFIG.showPublicPrayerCounts === true ||
+  String(CONFIG.showPublicPrayerCounts ?? "").trim().toLowerCase() === "true";
 
 const CATEGORIES = [
   { value: "general", label: "General", emoji: "\u{1F64F}" },
@@ -187,9 +189,41 @@ function categoryLabel(cat) {
 function prayerCountLabel(n, isOwn) {
   // On your own request the count describes OTHERS (you're shown as already
   // praying), so the wording never clashes with your settled "Prayed" button.
-  if (!n) return isOwn ? "No one else has prayed yet" : "Be the first to pray";
+  if (!n) return isOwn ? "Prayers from your group will appear here" : "Be the first to pray";
   if (n === 1) return isOwn ? "1 other person praying" : "1 person praying";
   return isOwn ? `${n} others praying` : `${n} people praying`;
+}
+
+function cardPrayerLabel(req) {
+  const ownPost = !!req.isMine;
+  if (SHOW_PUBLIC_PRAYER_COUNTS) {
+    return prayerCountLabel(toCount(req.distinctPrayers), ownPost);
+  }
+  if (ownPost) return "";
+  if (req.status === "answered" && req.hasViewerPrayed) return "You prayed for this";
+  return "";
+}
+
+function renderCardMeta(req) {
+  const meta = elem("p", "card-meta");
+  let hasPart = false;
+  const addPart = (part) => {
+    if (hasPart) meta.appendChild(text(" - "));
+    if (typeof part === "string") meta.appendChild(text(part));
+    else meta.appendChild(part);
+    hasPart = true;
+  };
+
+  if (req.category && req.category !== "general") addPart(categoryLabel(req.category));
+
+  const author = elem("span", req.isMine ? "card-author card-author-mine" : "card-author", req.author);
+  if (req.isMine) author.title = "Your post";
+  addPart(author);
+
+  const dateText = req.editedAt ? `${formatDate(req.createdAt)} (edited)` : formatDate(req.createdAt);
+  addPart(dateText);
+
+  return meta;
 }
 
 // ───────────────────────────── tabs/feed ─────────────────────────────
@@ -357,11 +391,7 @@ function renderCard(req) {
 
   // Category shown as quiet text, and only when it adds information ("General"
   // is the default, so we omit it to keep most cards uncluttered).
-  const parts = [];
-  if (req.category && req.category !== "general") parts.push(categoryLabel(req.category));
-  parts.push(req.author, formatDate(req.createdAt));
-  const cardMeta = parts.join(" - ");
-  li.appendChild(elem("p", "card-meta", req.editedAt ? `${cardMeta} (edited)` : cardMeta));
+  li.appendChild(renderCardMeta(req));
 
   // Name the unseen replies so "new" on your own prayers is finally concrete:
   // who responded, not just a number with nothing to point at.
@@ -384,8 +414,13 @@ function renderCard(req) {
 
   const ownPost = !!req.isMine;
   const foot = elem("div", "card-foot");
-  const count = elem("span", "card-count", prayerCountLabel(req.distinctPrayers, ownPost));
-  foot.appendChild(count);
+  const prayerLabel = cardPrayerLabel(req);
+  const count = prayerLabel ? elem("span", "card-count", prayerLabel) : null;
+  if (count) {
+    foot.appendChild(count);
+  } else {
+    foot.classList.add("card-foot-action-only");
+  }
 
   if (req.status !== "answered") {
     const btn = document.createElement("button");
@@ -403,12 +438,7 @@ function renderCard(req) {
     }
     foot.appendChild(btn);
   }
-  li.appendChild(foot);
-
-  const hint = elem("p", "card-hint", req.status === "answered"
-    ? "Tap to read the full story"
-    : "Tap to open");
-  li.appendChild(hint);
+  if (count || req.status !== "answered") li.appendChild(foot);
 
   // Open detail when tapping the card body (but not the pray button).
   li.tabIndex = 0;
@@ -437,22 +467,29 @@ function setPrayButton(btn, hasPrayed) {
 }
 
 async function onPray(req, btn, countEl) {
-  // Optimistic: settle the button (which disables it) and bump the count.
-  req.distinctPrayers += 1;
-  countEl.textContent = prayerCountLabel(req.distinctPrayers);
+  // Optimistic: settle the button immediately. In the default visibility mode
+  // there is no public count to bump; the button itself is the viewer's signal.
+  const previousCount = req.distinctPrayers;
+  const hadViewerPrayed = !!req.hasViewerPrayed;
+  if (SHOW_PUBLIC_PRAYER_COUNTS) req.distinctPrayers = toCount(req.distinctPrayers) + 1;
+  req.hasViewerPrayed = true;
+  req.hasPrayers = true;
+  if (countEl) countEl.textContent = cardPrayerLabel(req);
   setPrayButton(btn, true);
 
   try {
     const result = await api(`/requests/${req.id}/pray`, { method: "POST" });
-    req.distinctPrayers = result.distinctPrayers;
-    req.totalPrayers = result.totalPrayers;
+    if (result.distinctPrayers != null) req.distinctPrayers = result.distinctPrayers;
+    if (result.totalPrayers != null) req.totalPrayers = result.totalPrayers;
+    if (result.hasPrayers != null) req.hasPrayers = result.hasPrayers;
     req.hasViewerPrayed = result.hasViewerPrayed;
-    countEl.textContent = prayerCountLabel(req.distinctPrayers);
+    if (countEl) countEl.textContent = cardPrayerLabel(req);
     setPrayButton(btn, true);
   } catch (err) {
     // Roll back so the member can try again.
-    req.distinctPrayers = Math.max(0, req.distinctPrayers - 1);
-    countEl.textContent = prayerCountLabel(req.distinctPrayers);
+    req.distinctPrayers = previousCount;
+    req.hasViewerPrayed = hadViewerPrayed;
+    if (countEl) countEl.textContent = cardPrayerLabel(req);
     setPrayButton(btn, false);
     if (err.status === 401) return handleExpiredSession();
     setFeedStatus("Could not record that just now. Try again in a moment.");
@@ -683,9 +720,9 @@ function renderDetail(req) {
 
     modal.appendChild(elem("p", "detail-body", req.body));
 
-    // The author (admins too) can revise their own request after posting.
-    // Archived posts are never shown here, so isMine is the only gate needed.
-    if (req.isMine) {
+    // The author can revise while the request is active. Once logged, the
+    // request itself stays fixed and the author can add updates instead.
+    if (req.isMine && req.status === "open") {
       const editRow = elem("div", "detail-edit-row");
       const editBtn = elem("button", "btn-secondary btn-small", "Edit");
       editBtn.type = "button";
@@ -705,7 +742,7 @@ function renderDetail(req) {
     // The pray button below carries no count of its own - that was a duplicate
     // of this line. `let` so a pray tap can swap in a fresh, updated copy.
     let prayingEl = renderPraying(req);
-    modal.appendChild(prayingEl);
+    if (prayingEl) modal.appendChild(prayingEl);
 
     // Pray button (not for answered requests).
     if (req.status !== "answered") {
@@ -720,8 +757,16 @@ function renderDetail(req) {
       } else {
         btn.addEventListener("click", () => onPrayDetail(req, btn, () => {
           const fresh = renderPraying(req);
-          prayingEl.replaceWith(fresh);
-          prayingEl = fresh;
+          if (prayingEl && fresh) {
+            prayingEl.replaceWith(fresh);
+            prayingEl = fresh;
+          } else if (fresh) {
+            prayRow.before(fresh);
+            prayingEl = fresh;
+          } else if (prayingEl) {
+            prayingEl.remove();
+            prayingEl = null;
+          }
         }));
       }
       prayRow.appendChild(btn);
@@ -731,12 +776,13 @@ function renderDetail(req) {
     // Updates thread.
     modal.appendChild(renderUpdates(req));
 
-    // Add an update.
-    if (req.status != "answered") {
+    // Add an update. Logged requests only accept owner updates.
+    const canPostUpdate = req.status === "open" || (req.status === "answered" && req.isMine);
+    if (canPostUpdate) {
       modal.appendChild(renderUpdateForm(req));
     }
-    // Author-only actions on open requests.
-    if (req.isMine && req.status === "open") {
+    // Author-only actions.
+    if (req.isMine) {
       modal.appendChild(renderAuthorActions(req));
     }
 
@@ -752,20 +798,9 @@ function renderAdminActions(req) {
   wrap.appendChild(elem("p", "admin-actions-note",
     "Admin: remove this post from everyone's feed."));
 
-  const btn = elem("button", "btn-danger", "Remove post");
+  const btn = elem("button", "btn-danger", "Remove");
   btn.type = "button";
-  btn.addEventListener("click", async () => {
-    if (!window.confirm("Remove this post for everyone? It will disappear from all feeds.")) return;
-    btn.disabled = true;
-    try {
-      await api(`/requests/${req.id}/archive`, { method: "POST" });
-      closeModal();
-      loadFeed();
-    } catch (err) {
-      if (err.status === 401) { closeModal(); return handleExpiredSession(); }
-      btn.disabled = false;
-    }
-  });
+  btn.addEventListener("click", () => openRemoveConfirm(req, { admin: true }));
   wrap.appendChild(btn);
   return wrap;
 }
@@ -774,62 +809,90 @@ function renderPraying(req) {
   const wrap = elem("div", "praying");
   const ownPost = !!req.isMine;
   const members = req.prayingMembers || [];
-  if (members.length === 0) {
-    wrap.appendChild(elem("p", "praying-line",
-      ownPost ? "No one else has prayed yet." : "No one has prayed yet."));
+  const inPrayerLog = req.status === "answered";
+
+  if (ownPost) {
+    if (members.length === 0) {
+      if (inPrayerLog) return null;
+      wrap.appendChild(elem("p", "praying-line", "Prayers from your group will appear here."));
+      return wrap;
+    }
+    if (SHOW_PUBLIC_PRAYER_COUNTS) {
+      wrap.appendChild(elem("p", "praying-line", prayerCountLabel(toCount(req.distinctPrayers), true)));
+    } else {
+      wrap.appendChild(elem("p", "praying-line", "People who prayed for this request"));
+    }
+    wrap.appendChild(elem("p", "praying-names", members.map((m) => m.name).join(", ")));
     return wrap;
   }
-  const names = members.map((m) => m.name).join(", ");
-  const summary = document.createElement("details");
-  summary.className = "praying-details";
-  const sum = document.createElement("summary");
-  sum.appendChild(text(prayerCountLabel(req.distinctPrayers, ownPost)));
-  summary.appendChild(sum);
-  summary.appendChild(elem("p", "praying-names", names));
-  wrap.appendChild(summary);
+
+  if (SHOW_PUBLIC_PRAYER_COUNTS) {
+    const distinctPrayers = toCount(req.distinctPrayers);
+    if (inPrayerLog && distinctPrayers === 0 && !req.hasViewerPrayed) return null;
+    if (distinctPrayers > 0 || !inPrayerLog) {
+      wrap.appendChild(elem("p", "praying-line", prayerCountLabel(distinctPrayers, false)));
+    }
+    if (req.hasViewerPrayed) {
+      wrap.appendChild(elem("p", "praying-names", "You have prayed for this request."));
+    }
+    return wrap;
+  }
+
+  if (req.hasViewerPrayed) {
+    wrap.appendChild(elem("p", "praying-line", "You have prayed for this request."));
+  } else if (req.status === "open") {
+    wrap.appendChild(elem("p", "praying-line", "Tap below when you pray for this request."));
+  } else {
+    return null;
+  }
   return wrap;
 }
 
 async function onPrayDetail(req, btn, refreshPraying) {
-  // Optimistic: settle the button (which disables it) and reflect the viewer in
-  // the "who's praying" line - now the only place the count lives.
+  const previous = {
+    distinctPrayers: req.distinctPrayers,
+    totalPrayers: req.totalPrayers,
+    hasPrayers: req.hasPrayers,
+    hasViewerPrayed: req.hasViewerPrayed,
+    prayingMembers: Array.isArray(req.prayingMembers) ? [...req.prayingMembers] : undefined,
+  };
+
+  // Optimistic: settle the button immediately and reflect only what this viewer
+  // is allowed to see under the current prayer visibility mode.
   addViewerToPrayers(req);
   setPrayButton(btn, true);
   refreshPraying();
   try {
     const result = await api(`/requests/${req.id}/pray`, { method: "POST" });
-    req.distinctPrayers = result.distinctPrayers;
+    if (result.distinctPrayers != null) req.distinctPrayers = result.distinctPrayers;
+    if (result.totalPrayers != null) req.totalPrayers = result.totalPrayers;
+    if (result.hasPrayers != null) req.hasPrayers = result.hasPrayers;
     req.hasViewerPrayed = result.hasViewerPrayed;
     setPrayButton(btn, true);
     refreshPraying();
   } catch (err) {
-    removeViewerFromPrayers(req);
+    req.distinctPrayers = previous.distinctPrayers;
+    req.totalPrayers = previous.totalPrayers;
+    req.hasPrayers = previous.hasPrayers;
+    req.hasViewerPrayed = previous.hasViewerPrayed;
+    req.prayingMembers = previous.prayingMembers;
     setPrayButton(btn, false);
     refreshPraying();
     if (err.status === 401) { closeModal(); return handleExpiredSession(); }
   }
 }
 
-// Optimistically reflect the signed-in member in a request's praying list so the
-// "who's praying" line can re-render without a round trip. Prayer-ers are named
-// to each other, so showing the member's own name here is correct.
+// Optimistically reflect the signed-in member in the request state. Names are
+// only added when this viewer is allowed to see the praying list.
 function addViewerToPrayers(req) {
   const me = state.member;
   if (!me) return;
+  req.hasViewerPrayed = true;
+  req.hasPrayers = true;
   req.prayingMembers = req.prayingMembers || [];
   if (!req.prayingMembers.some((m) => m.id === me.id)) {
-    req.prayingMembers.unshift({ id: me.id, name: me.name });
-    req.distinctPrayers = (req.distinctPrayers || 0) + 1;
-  }
-}
-
-function removeViewerFromPrayers(req) {
-  const me = state.member;
-  if (!me) return;
-  const before = (req.prayingMembers || []).length;
-  req.prayingMembers = (req.prayingMembers || []).filter((m) => m.id !== me.id);
-  if (req.prayingMembers.length < before) {
-    req.distinctPrayers = Math.max(0, (req.distinctPrayers || 0) - 1);
+    if (req.canSeePrayerNames) req.prayingMembers.unshift({ id: me.id, name: me.name });
+    req.distinctPrayers = toCount(req.distinctPrayers) + 1;
   }
 }
 
@@ -852,7 +915,9 @@ function renderUpdateForm(req) {
   const field = elem("textarea", "field-input field-textarea");
   field.rows = 2;
   field.maxLength = 2000;
-  field.placeholder = "Add an update or a word of encouragement...";
+  field.placeholder = req.status === "answered"
+    ? "Add an update to this logged prayer..."
+    : "Add an update or a word of encouragement...";
   form.appendChild(field);
 
   const errLine = elem("p", "form-error");
@@ -886,27 +951,59 @@ function renderAuthorActions(req) {
   // Moving to the Prayer Log opens its own dedicated screen (see openAnswerForm)
   // rather than expanding inline, so it never sits alongside the still-live
   // updates thread and read as two competing actions.
-  const answerBtn = elem("button", "btn-secondary", "Move to Prayer Log");
-  answerBtn.type = "button";
-  answerBtn.addEventListener("click", () => openAnswerForm(req));
+  if (req.status === "open") {
+    const answerBtn = elem("button", "btn-secondary", "Move to Prayer Log");
+    answerBtn.type = "button";
+    answerBtn.addEventListener("click", () => openAnswerForm(req));
+    wrap.appendChild(answerBtn);
+  }
 
-  const archiveBtn = elem("button", "btn-danger", "Archive");
-  archiveBtn.type = "button";
-  archiveBtn.addEventListener("click", async () => {
-    archiveBtn.disabled = true;
-    try {
-      await api(`/requests/${req.id}/archive`, { method: "POST" });
-      closeModal();
-      loadFeed();
-    } catch (err) {
-      if (err.status === 401) { closeModal(); return handleExpiredSession(); }
-      archiveBtn.disabled = false;
-    }
-  });
+  const removeBtn = elem("button", "btn-danger", "Remove");
+  removeBtn.type = "button";
+  removeBtn.addEventListener("click", () => openRemoveConfirm(req));
 
-  wrap.appendChild(answerBtn);
-  wrap.appendChild(archiveBtn);
+  wrap.appendChild(removeBtn);
   return wrap;
+}
+
+function openRemoveConfirm(req, { admin = false } = {}) {
+  renderModalContent((modal) => {
+    modalHeader(modal, "Remove post");
+
+    modal.appendChild(elem("p", "remove-lead", admin
+      ? `Remove "${req.title}" from everyone's feed?`
+      : `Remove "${req.title}" from the group?`));
+    modal.appendChild(elem("p", "remove-note",
+      "It will disappear from every feed. An admin can restore it later."));
+
+    const errLine = elem("p", "form-error");
+    errLine.hidden = true;
+    modal.appendChild(errLine);
+
+    const actions = elem("div", "modal-actions");
+    const cancel = elem("button", "btn-secondary", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => renderDetail(req));
+    const confirm = elem("button", "btn-danger", "Remove");
+    confirm.type = "button";
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      try {
+        await api(`/requests/${req.id}/archive`, { method: "POST" });
+        closeModal();
+        loadFeed();
+      } catch (err) {
+        if (err.status === 401) { closeModal(); return handleExpiredSession(); }
+        showFormError(errLine, isNetworkError(err)
+          ? "Could not connect. Try again."
+          : (err.message || "Could not remove that. Try again."));
+        confirm.disabled = false;
+      }
+    });
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    modal.appendChild(actions);
+  });
 }
 
 // A single-purpose screen for moving a request to the Prayer Log. It replaces

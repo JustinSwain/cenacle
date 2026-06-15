@@ -458,15 +458,6 @@ button {
 
 .card:hover .card-chevron { color: var(--primary); }
 
-.card-hint {
-    margin: 14px 0 0;
-    font-size: 0.9rem;
-    color: var(--muted);
-    text-align: center;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
-}
-
 .card-title {
     font-family: var(--font-head);
     font-weight: 600;
@@ -480,6 +471,11 @@ button {
     margin: 6px 0 0;
     font-size: 0.95rem;
     color: var(--muted);
+}
+
+.card-author-mine {
+    color: var(--primary);
+    font-weight: 700;
 }
 
 .card-snippet {
@@ -497,6 +493,10 @@ button {
     gap: 12px;
     margin-top: 16px;
     flex-wrap: wrap;
+}
+
+.card-foot-action-only {
+    justify-content: flex-end;
 }
 
 .card-count {
@@ -879,13 +879,6 @@ body.modal-open { overflow: hidden; }
     color: var(--muted);
 }
 
-.praying-details summary {
-    font-size: 1.05rem;
-    color: var(--muted);
-    cursor: pointer;
-    min-height: 32px;
-}
-
 .praying-names {
     margin: 8px 0 0;
     font-size: 1.05rem;
@@ -977,6 +970,21 @@ body.modal-open { overflow: hidden; }
     font-size: 1.05rem;
     line-height: 1.55;
     color: var(--text);
+}
+
+.remove-lead {
+    margin: 0 0 10px;
+    font-size: 1.08rem;
+    line-height: 1.55;
+    color: var(--text);
+    word-break: break-word;
+}
+
+.remove-note {
+    margin: 0 0 18px;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--danger-ink);
 }
 
 /* ──────────────────── header right + help ──────────────────── */
@@ -1177,8 +1185,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-.card:focus-visible,
-.praying-details summary:focus-visible {
+.card:focus-visible {
     outline: 3px solid var(--focus);
     outline-offset: 2px;
 }

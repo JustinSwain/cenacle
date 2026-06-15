@@ -162,8 +162,22 @@ the secret does not change anyone's invite code - their links still work.)
 ## Posts (prayer requests)
 
 Most post moderation is easier **in the app**: open the request, scroll down,
-and use **Remove post** (admin-only) - it pulls the post from every feed. The
-commands here are for when you'd rather work from your computer.
+and use **Remove**. Members can remove their own posts; admins can remove
+anyone's post. The commands here are for when you'd rather work from your
+computer.
+
+### Prayer count visibility
+
+By default, prayer responses are relational rather than public scores: the
+author of a request can see the names of people who prayed, and everyone else
+only sees whether they personally prayed.
+
+If your group intentionally wants public prayer counts, set
+`PUBLIC_PRAYER_COUNTS` to `true` in `wrangler.jsonc`, then deploy:
+
+```
+npm run deploy
+```
 
 ### Find a post's ID
 
@@ -321,7 +335,7 @@ npm run deploy
 | Give a new code | terminal | `node scripts/reset-member-code.mjs --remote "Name"` |
 | Lock someone out | terminal | `UPDATE members SET token_version = token_version + 1 ...` |
 | Log everyone out | terminal | `wrangler secret put SESSION_SECRET` |
-| Remove a junk post | **app** | open post -> **Remove post** |
+| Remove a junk post | **app** | open post -> **Remove** |
 | Restore a post | terminal | `UPDATE requests SET status='open' ...` |
 | Back up everything | terminal | `wrangler d1 export cenacle_db --remote --output ...` |
 | Update to a new version | terminal | `git pull` -> `d1 migrations apply --remote` -> `npm run deploy` |
