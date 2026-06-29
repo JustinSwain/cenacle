@@ -179,6 +179,14 @@ If your group intentionally wants public prayer counts, set
 npm run deploy
 ```
 
+### Feed count descriptions
+
+The app hides feed totals by default. To show a small description for only the
+selected feed, set `SHOW_FEED_COUNTS` to `true` in `wrangler.jsonc`, then
+deploy. Members will see descriptions such as "4 active requests," "2 Prayer
+Log entries," or "3 requests you shared." The app never combines these counts
+or presents them as a measure of personal prayer.
+
 ### Find a post's ID
 
 ```

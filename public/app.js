@@ -13,6 +13,8 @@ const CONFIG = (window.__CONFIG__ && typeof window.__CONFIG__ === "object") ? wi
 const GROUP_NAME = (typeof CONFIG.groupName === "string" && CONFIG.groupName.trim()) || "Prayer";
 const SHOW_PUBLIC_PRAYER_COUNTS = CONFIG.showPublicPrayerCounts === true ||
   String(CONFIG.showPublicPrayerCounts ?? "").trim().toLowerCase() === "true";
+const SHOW_FEED_COUNTS = CONFIG.showFeedCounts === true ||
+  String(CONFIG.showFeedCounts ?? "").trim().toLowerCase() === "true";
 
 const CATEGORIES = [
   { value: "general", label: "General", emoji: "\u{1F64F}" },
@@ -129,7 +131,7 @@ const el = {
   helpBtn: document.getElementById("help-btn"),
   statsBtn: document.getElementById("stats-btn"),
   refreshBtn: document.getElementById("refresh-btn"),
-  summary: document.getElementById("summary"),
+  feedDescription: document.getElementById("feed-description"),
   themeToggle: document.getElementById("theme-toggle"),
   newBtn: document.getElementById("new-request-btn"),
   backdrop: document.getElementById("modal-backdrop"),
@@ -235,6 +237,7 @@ function setActiveTab(tab) {
     t.setAttribute("aria-selected", active ? "true" : "false");
     t.classList.toggle("tab-active", active);
   }
+  renderFeedDescription();
 }
 
 // A tab carries a single dot when it holds anything new to you - no count, since
@@ -556,7 +559,7 @@ function openCreateForm() {
       await api("/requests", { method: "POST", body: payload });
       closeModal();
       setActiveTab("open");
-      await loadFeed();
+      await Promise.all([loadFeed(), loadStats()]);
     },
   });
 }
@@ -991,7 +994,7 @@ function openRemoveConfirm(req, { admin = false } = {}) {
       try {
         await api(`/requests/${req.id}/archive`, { method: "POST" });
         closeModal();
-        loadFeed();
+        Promise.all([loadFeed(), loadStats()]);
       } catch (err) {
         if (err.status === 401) { closeModal(); return handleExpiredSession(); }
         showFormError(errLine, isNetworkError(err)
@@ -1052,7 +1055,7 @@ function openAnswerForm(req) {
         });
         renderDetail(data.request);
         // Refresh the underlying feed so the card moves to the Prayer Log.
-        loadFeed();
+        Promise.all([loadFeed(), loadStats()]);
       } catch (err) {
         if (err.status === 401) { closeModal(); return handleExpiredSession(); }
         showFormError(errLine, isNetworkError(err)
@@ -1328,8 +1331,8 @@ function confirmSignOut(container, triggerBtn) {
 
 // ─────────────────────────────── stats ─────────────────────────────
 
-// Fetch group + personal stats. Defensive: if /stats is unavailable (e.g. the
-// backend predates this feature), the summary line and Stats button stay hidden.
+// Fetch optional feed counts and admin stats. Defensive: if /stats is
+// unavailable, the description and Stats button stay hidden.
 async function loadStats() {
   let data;
   try {
@@ -1339,36 +1342,30 @@ async function loadStats() {
     return;
   }
   state.stats = data.stats || null;
-  renderSummary();
+  renderFeedDescription();
   // Stats button appears only when the server returned an admin block (the
   // server gates this by role; the client never decides admin on its own).
   const isAdmin = !!(state.stats && state.stats.admin);
   el.statsBtn.hidden = !isAdmin;
 }
 
-// Always-visible line: active prayers + Prayer Log count, plus the viewer's
-// own year totals.
-function renderSummary() {
-  const s = state.stats;
-  if (!s) { el.summary.hidden = true; return; }
-  el.summary.replaceChildren();
-
-  const pub = s.public || {};
-  const activeN = toCount(pub.open);
-  const group = elem("span", "summary-group",
-    `${activeN} Active ${activeN === 1 ? "Prayer" : "Prayers"}, ${toCount(pub.answered)} in Prayer Log`);
-  el.summary.appendChild(group);
-
-  const me = s.personal;
-  if (me) {
-    el.summary.appendChild(elem("span", "summary-sep", " | "));
-    const prayers = toCount(me.prayers);
-    const mine = elem("span", "summary-mine",
-      `You in ${me.year}: ${prayers} ${prayers === 1 ? "prayer" : "prayers"}`);
-    el.summary.appendChild(mine);
+// When enabled by the deployment admin, describe only the selected feed.
+function renderFeedDescription() {
+  const counts = state.stats && state.stats.feedCounts;
+  if (!SHOW_FEED_COUNTS || !counts) {
+    el.feedDescription.hidden = true;
+    return;
   }
 
-  el.summary.hidden = false;
+  const count = toCount(counts[state.tab]);
+  if (state.tab === "answered") {
+    el.feedDescription.textContent = `${count} Prayer Log ${count === 1 ? "entry" : "entries"}`;
+  } else if (state.tab === "mine") {
+    el.feedDescription.textContent = `${count} ${count === 1 ? "request" : "requests"} you shared`;
+  } else {
+    el.feedDescription.textContent = `${count} active ${count === 1 ? "request" : "requests"}`;
+  }
+  el.feedDescription.hidden = false;
 }
 
 function openStatsPanel() {

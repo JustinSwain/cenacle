@@ -22,11 +22,14 @@
 	 * PUBLIC_PRAYER_COUNTS can be set to true if a group intentionally wants
 	 * prayer counts visible on everyone's posts. The default keeps counts private:
 	 * authors see the names of people who prayed; others see only their own state.
+	 * SHOW_FEED_COUNTS can be set to true to show a small count describing only
+	 * the selected feed. It stays hidden by default.
 	 */
 	"vars": {
 		"GROUP_NAME": "Prayer",
 		"THEME": "warm",
-		"PUBLIC_PRAYER_COUNTS": false
+		"PUBLIC_PRAYER_COUNTS": false,
+		"SHOW_FEED_COUNTS": false
 	},
 	/**
 	 * Static assets (the frontend in public/) are served from the same origin

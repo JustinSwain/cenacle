@@ -101,6 +101,7 @@ Everything an admin configures lives in two places:
 | `GROUP_NAME` | `wrangler.jsonc` `vars` | Title, manifest, onboarding, invite copy. |
 | `THEME` | `wrangler.jsonc` `vars` | `warm` (default), `cool`, or `neutral`. Sets both light and dark palettes. |
 | `PUBLIC_PRAYER_COUNTS` | `wrangler.jsonc` `vars` | `false` by default. Set to `true` only if the group intentionally wants prayer counts visible on everyone's posts. |
+| `SHOW_FEED_COUNTS` | `wrangler.jsonc` `vars` | `false` by default. Set to `true` to show a small count for only the selected feed. |
 | App icon | `public/icon.jpg` | Replace with your own square image. |
 | `SESSION_SECRET` | `wrangler secret put` | HMAC signing key, at least 32 characters. A real secret, never in the repo. |
 | `database_id` | `wrangler.jsonc` `d1_databases` | From `wrangler d1 create`. |

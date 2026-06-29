@@ -1210,21 +1210,12 @@ textarea:focus-visible,
 
 /* ─────────────────────────── stats ─────────────────────────── */
 
-.summary {
+.feed-description {
     margin: 4px 0 16px;
     text-align: center;
     font-size: 1rem;
     color: var(--muted);
     line-height: 1.5;
-}
-
-.summary-sep {
-    color: var(--border-strong);
-    margin: 0 4px;
-}
-
-.summary-mine {
-    color: var(--text);
 }
 
 .stats-panel {

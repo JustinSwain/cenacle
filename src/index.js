@@ -34,7 +34,8 @@ function readConfig(env) {
   let theme = (env.THEME && String(env.THEME).trim().toLowerCase()) || "warm";
   if (!PALETTES[theme]) theme = "warm";
   const showPublicPrayerCounts = envFlag(env.PUBLIC_PRAYER_COUNTS);
-  return { groupName, theme, showPublicPrayerCounts };
+  const showFeedCounts = envFlag(env.SHOW_FEED_COUNTS);
+  return { groupName, theme, showPublicPrayerCounts, showFeedCounts };
 }
 
 function envFlag(value) {
@@ -473,48 +474,29 @@ async function handleUpdateProfile(request, env, member) {
 
 // ─────────────────────────────── stats ───────────────────────────────
 
-// Public + personal stats for everyone; the admin block is included only for
-// admins (gated server-side, never trust the client). No prayer graph and no
-// reciprocity ratio by product decision.
+// Optional feed counts for everyone; the admin block is included only for
+// admins (gated server-side, never trust the client). Feed counts stay disabled
+// unless the deployment admin explicitly enables them.
 async function handleStats(env, member) {
-  const now = Date.now();
-  const year = new Date(now).getUTCFullYear();
-  const yearStart = Date.UTC(year, 0, 1);
-
-  const open = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM requests WHERE status = 'open'`
-  ).first();
-  const answered = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM requests WHERE status = 'answered'`
-  ).first();
-
-  // Personal prayer count = prayers offered + requests submitted, this year.
-  const myTaps = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM prayers WHERE member_id = ? AND created_at >= ?`
-  ).bind(member.id, yearStart).first();
-  const myRequests = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM requests WHERE author_id = ? AND created_at >= ?`
-  ).bind(member.id, yearStart).first();
-
-  // Answered prayers the member was part of (authored or prayed for) this year.
-  const myAnswered = await env.DB.prepare(`
-    SELECT COUNT(DISTINCT r.id) AS n FROM requests r
-    WHERE r.status = 'answered' AND r.answered_at >= ?
-      AND (r.author_id = ?
-           OR EXISTS (SELECT 1 FROM prayers p WHERE p.request_id = r.id AND p.member_id = ?))
-  `).bind(yearStart, member.id, member.id).first();
+  const config = readConfig(env);
+  let feedCounts = null;
+  if (config.showFeedCounts) {
+    const [open, answered, mine] = await env.DB.batch([
+      env.DB.prepare(`SELECT COUNT(*) AS n FROM requests WHERE status = 'open'`),
+      env.DB.prepare(`SELECT COUNT(*) AS n FROM requests WHERE status = 'answered'`),
+      env.DB.prepare(`SELECT COUNT(*) AS n FROM requests WHERE author_id = ? AND status != 'archived'`)
+        .bind(member.id),
+    ]);
+    feedCounts = {
+      open: toInt(open?.results?.[0]?.n),
+      answered: toInt(answered?.results?.[0]?.n),
+      mine: toInt(mine?.results?.[0]?.n),
+    };
+  }
 
   const stats = {
-    public: {
-      open: toInt(open?.n),
-      answered: toInt(answered?.n),
-    },
-    personal: {
-      year,
-      prayers: toInt(myTaps?.n) + toInt(myRequests?.n),
-      answered: toInt(myAnswered?.n),
-    },
-    admin: member.role === "admin" ? await computeAdminStats(env, now) : null,
+    feedCounts,
+    admin: member.role === "admin" ? await computeAdminStats(env, Date.now()) : null,
   };
 
   return json({ stats });
