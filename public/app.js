@@ -349,6 +349,7 @@ function writeFeedCache(tab, requests) {
 }
 
 function renderFeed(requests) {
+  stopCardVisibilityTracking();
   el.feed.replaceChildren();
   // Keep the current tab's dot consistent with the cards actually shown, without
   // waiting on /me. The other tabs' dots come from refreshTabDots.
@@ -361,6 +362,7 @@ function renderFeed(requests) {
   for (const req of requests) {
     el.feed.appendChild(renderCard(req));
   }
+  startCardVisibilityTracking();
 }
 
 function emptyMessage(tab) {
@@ -373,6 +375,8 @@ function renderCard(req) {
   const li = document.createElement("li");
   li.className = req.status === "answered" ? "card card-answered" : "card";
   li.dataset.id = req.id;
+  li.dataset.newCardActivity = req.newCardActivity ? "1" : "0";
+  li.dataset.newComments = String(toCount(req.newComments));
 
   // "New to you": unseen activity on this request. A new comment is the most
   // specific signal, so it names who replied; otherwise it's a new post or a
@@ -456,6 +460,77 @@ function renderCard(req) {
   });
 
   return li;
+}
+
+// Treat a post/log badge like a stable "new this visit" snapshot. Once at least
+// half its card enters the viewport, persist the impression for the next feed
+// load, but leave this render unchanged. Reply signals remain untouched.
+let cardVisibilityObserver = null;
+let cardSeenTimer = null;
+const pendingCardSeen = new Set();
+const inFlightCardSeen = new Set();
+
+function stopCardVisibilityTracking() {
+  cardVisibilityObserver?.disconnect();
+  cardVisibilityObserver = null;
+}
+
+function startCardVisibilityTracking() {
+  const cards = Array.from(el.feed.querySelectorAll('li[data-new-card-activity="1"]'));
+  if (cards.length === 0) return;
+
+  if (!("IntersectionObserver" in window)) {
+    for (const card of cards) queueCardSeen(card.dataset.id);
+    return;
+  }
+
+  cardVisibilityObserver = new IntersectionObserver((entries, observer) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting || entry.intersectionRatio < 0.5) continue;
+      observer.unobserve(entry.target);
+      queueCardSeen(entry.target.dataset.id);
+    }
+  }, { threshold: 0.5 });
+
+  for (const card of cards) cardVisibilityObserver.observe(card);
+}
+
+function queueCardSeen(rawId) {
+  const id = Number(rawId);
+  if (!Number.isSafeInteger(id) || id <= 0 || inFlightCardSeen.has(id)) return;
+  pendingCardSeen.add(id);
+  if (cardSeenTimer == null) cardSeenTimer = window.setTimeout(flushCardSeen, 250);
+}
+
+async function flushCardSeen() {
+  cardSeenTimer = null;
+  const ids = [...pendingCardSeen];
+  pendingCardSeen.clear();
+  if (ids.length === 0) return;
+  for (const id of ids) inFlightCardSeen.add(id);
+
+  try {
+    const result = await api("/requests/seen", { method: "POST", body: { ids } });
+    for (const id of result.seen || []) cacheCardActivitySeen(id);
+  } catch (err) {
+    if (err.status === 401) return handleExpiredSession();
+    // A failed receipt should remain eligible when it enters the viewport again.
+    for (const id of ids) {
+      const card = el.feed.querySelector(`li[data-id="${CSS.escape(String(id))}"]`);
+      if (card?.dataset.newCardActivity === "1") cardVisibilityObserver?.observe(card);
+    }
+  } finally {
+    for (const id of ids) inFlightCardSeen.delete(id);
+  }
+}
+
+function cacheCardActivitySeen(id) {
+  // Keep the current card and tab dot stable. Updating the cache prevents a
+  // stale flash before the next server response arrives after a reload.
+  updateCachedRequest(id, (req) => {
+    req.newCardActivity = false;
+    if (toCount(req.newComments) === 0) req.isNew = false;
+  });
 }
 
 // Once a member has prayed for a request the button settles into a done state
@@ -705,8 +780,34 @@ function clearCardHighlight(id) {
     li.classList.remove("card-fresh");
     li.querySelector(".card-new-pill")?.remove();
     li.querySelector(".card-reply-note")?.remove();
+    li.dataset.newCardActivity = "0";
+    li.dataset.newComments = "0";
   }
+  updateCachedRequest(id, (req) => {
+    req.isNew = false;
+    req.newCardActivity = false;
+    req.newComments = 0;
+    req.newCommentAuthor = null;
+  });
   setTabDot(state.tab, !!el.feed.querySelector(".card-fresh"));
+}
+
+function updateCachedRequest(id, update) {
+  try {
+    const all = JSON.parse(localStorage.getItem(FEED_CACHE_KEY) || "{}");
+    let changed = false;
+    for (const entry of Object.values(all)) {
+      if (!entry || !Array.isArray(entry.requests)) continue;
+      for (const req of entry.requests) {
+        if (String(req.id) !== String(id)) continue;
+        update(req);
+        changed = true;
+      }
+    }
+    if (changed) localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(all));
+  } catch {
+    /* corrupt or unavailable storage is non-fatal */
+  }
 }
 
 function renderDetail(req) {

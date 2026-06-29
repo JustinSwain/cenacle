@@ -154,6 +154,10 @@ async function dispatch(request, env, path) {
     return withMember(request, env, (member) => handleCreateRequest(request, env, member));
   }
 
+  if (method === "POST" && path === "/requests/seen") {
+    return withMember(request, env, (member) => handleCardsSeen(request, env, member));
+  }
+
   const prayMatch = path.match(/^\/requests\/(\d+)\/pray$/);
   if (method === "POST" && prayMatch) {
     const id = Number(prayMatch[1]);
@@ -369,29 +373,32 @@ async function ensureBaseline(env, member) {
   return now;
 }
 
-// Record that a member has opened a request's detail (a read receipt). This is
-// what clears the request's "new to you" highlight for them.
+// Record that a member has opened a request's detail. This clears both the card
+// signal and every reply that existed before this read receipt.
 async function markSeen(env, memberId, requestId) {
+  const now = Date.now();
   await env.DB.prepare(`
-    INSERT INTO seen (member_id, request_id, seen_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(member_id, request_id) DO UPDATE SET seen_at = excluded.seen_at
-  `).bind(memberId, requestId, Date.now()).run();
+    INSERT INTO seen (member_id, request_id, seen_at, card_seen_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(member_id, request_id) DO UPDATE SET
+      seen_at = MAX(seen.seen_at, excluded.seen_at),
+      card_seen_at = MAX(seen.card_seen_at, excluded.card_seen_at)
+  `).bind(memberId, requestId, now, now).run();
 }
 
 // Canonical "new to you" predicate, shared by the feed and the tab dots so the
 // two can never disagree (the failure mode of the old count-pill system). A
-// request is new when it carries activity the member has not seen - a post by
-// someone else, a move to the Prayer Log, or a comment from someone else -
-// dated after both the frozen baseline and the member's per-request seen_at.
+// request is new when it carries activity the member has not seen: card-visible
+// activity uses card_seen_at, while comments require a detail read (seen_at).
 // A member's own post only surfaces here through others' comments on it.
 function computeNewState(row, member, baseline) {
   const mine = row.author_id === member.id;
-  const floor = Math.max(toInt(baseline), toInt(row.seen_at, 0));
+  const detailFloor = Math.max(toInt(baseline), toInt(row.seen_at, 0));
+  const cardFloor = Math.max(detailFloor, toInt(row.card_seen_at, 0));
 
-  const newPost = !mine && toInt(row.created_at) > floor;
+  const newPost = !mine && toInt(row.created_at) > cardFloor;
   const newAnswer = row.status === "answered" && row.answered_at != null
-    && !mine && toInt(row.answered_at) > floor;
+    && !mine && toInt(row.answered_at) > cardFloor;
 
   // The feed query supplies a precomputed count of unseen foreign comments; the
   // tab-dot query supplies the latest foreign comment's timestamp instead.
@@ -400,11 +407,13 @@ function computeNewState(row, member, baseline) {
   if (row.new_comments != null) {
     newComments = toInt(row.new_comments);
   } else if (row.last_foreign_update_at != null) {
-    newComments = toInt(row.last_foreign_update_at) > floor ? 1 : 0;
+    newComments = toInt(row.last_foreign_update_at) > detailFloor ? 1 : 0;
   }
 
+  const newCardActivity = newPost || newAnswer;
   return {
-    isNew: newPost || newAnswer || newComments > 0,
+    isNew: newCardActivity || newComments > 0,
+    newCardActivity,
     newComments,
     // Only meaningful when newComments > 0; the feed's latest-foreign-commenter
     // is necessarily one of the unseen ones in that case.
@@ -440,7 +449,7 @@ async function handleMe(env, member) {
 async function tabHasNew(env, member, baseline, where, whereBinds) {
   const { results } = await env.DB.prepare(`
     SELECT r.author_id, r.created_at, r.answered_at, r.status,
-      s.seen_at AS seen_at,
+      s.seen_at AS seen_at, s.card_seen_at AS card_seen_at,
       (SELECT MAX(u.created_at) FROM updates u
          WHERE u.request_id = r.id AND u.member_id != ?) AS last_foreign_update_at
     FROM requests r
@@ -627,6 +636,7 @@ async function handleListRequests(request, env, member) {
       (SELECT COUNT(*)                    FROM prayers p WHERE p.request_id = r.id) AS total_prayers,
       (SELECT COUNT(*) FROM prayers p WHERE p.request_id = r.id AND p.member_id = ?) AS viewer_prayers,
       s.seen_at AS seen_at,
+      s.card_seen_at AS card_seen_at,
       (SELECT COUNT(*) FROM updates u
          WHERE u.request_id = r.id AND u.member_id != ?
            AND u.created_at > MAX(COALESCE(s.seen_at, 0), ?)) AS new_comments,
@@ -643,6 +653,42 @@ async function handleListRequests(request, env, member) {
 
   const cards = (results ?? []).map((row) => serializeCard(row, member, baseline, config));
   return json({ requests: cards });
+}
+
+// A card that reaches the member's viewport no longer counts as an unseen post
+// or Prayer Log move. Replies remain new until the member opens the detail.
+async function handleCardsSeen(request, env, member) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  if (!Array.isArray(body?.ids)) return json({ error: "ids must be an array" }, 400);
+  const ids = [...new Set(body.ids
+    .map((id) => Number(id))
+    .filter((id) => Number.isSafeInteger(id) && id > 0))];
+  if (ids.length === 0) return json({ seen: [] });
+  if (ids.length > 100) return json({ error: "Too many request ids" }, 400);
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const { results } = await env.DB.prepare(`
+    SELECT id FROM requests
+    WHERE status != 'archived' AND id IN (${placeholders})
+  `).bind(...ids).all();
+  const visibleIds = (results ?? []).map((row) => toInt(row.id));
+  if (visibleIds.length === 0) return json({ seen: [] });
+
+  const now = Date.now();
+  await env.DB.batch(visibleIds.map((id) => env.DB.prepare(`
+    INSERT INTO seen (member_id, request_id, seen_at, card_seen_at)
+    VALUES (?, ?, 0, ?)
+    ON CONFLICT(member_id, request_id) DO UPDATE SET
+      card_seen_at = MAX(seen.card_seen_at, excluded.card_seen_at)
+  `).bind(member.id, id, now)));
+
+  return json({ seen: visibleIds });
 }
 
 async function handleRequestDetail(env, member, id) {
@@ -922,6 +968,7 @@ function serializeCard(row, member, baseline, config = {}) {
     // "New to you" highlight: whether this card carries unseen activity, and if
     // that activity is a comment, who left it (so the card can say what changed).
     isNew: newState.isNew,
+    newCardActivity: newState.newCardActivity,
     newComments: newState.newComments,
     newCommentAuthor: newState.newCommentAuthor,
     author: row.author_name,
