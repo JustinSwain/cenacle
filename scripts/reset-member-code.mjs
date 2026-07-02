@@ -90,7 +90,7 @@ function buildSql({ id, name, hash }) {
   // output, so you can see whether a row matched without parsing anything.
   return [
     "UPDATE members",
-    `SET token_hash = '${hash}', token_version = token_version + 1`,
+    `SET token_hash = '${hash}', token_version = token_version + 1, active = 1`,
     `WHERE ${where};`,
     "SELECT changes() AS members_updated;",
   ].join("\n") + "\n";

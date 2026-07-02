@@ -14,8 +14,8 @@ and tells security researchers how to report issues.
   processor in the usual cloud sense. No other third party is involved: no
   analytics, no trackers, no external calls carrying user data.
 - **Members** see each other's active and Prayer Log requests, who wrote them,
-  who has prayed, and group stats. Admins additionally see the Stats panel and
-  can remove any post.
+  and who has prayed. Admins additionally see group statistics, manage member
+  access and roles, review the administration audit trail, and remove any post.
 
 ## Authentication
 
@@ -29,9 +29,9 @@ and tells security researchers how to report issues.
   `wrangler secret put` and never committed to the repo.
 - Failed code attempts are rate-limited by HMAC-hashed client IP and attempted
   code hash. Raw IPs and raw attempted codes are not stored in the limiter table.
-- Each member has a `token_version`. Bumping it instantly invalidates every
-  active session for that person, which is how revocation and "give a new code"
-  work.
+- Each member has an `active` flag and a `token_version`. Revocation clears the
+  active flag and bumps the version, so both the old invite and every live
+  session stop working immediately.
 
 ## Named participation
 
@@ -65,6 +65,9 @@ These are enforced in the code and should not be weakened by changes:
   inserted via `innerHTML`.
 - **SEC6 - Be transparent.** Tell your group their data lives in your Cloudflare
   account. Honesty about the trust model is part of the design.
+- **SEC7 - Enforce administration server-side.** Every administration route
+  verifies the current member's active session and `admin` role. The Worker
+  also prevents self-revocation and preserves at least one active administrator.
 
 ## Reporting a vulnerability
 

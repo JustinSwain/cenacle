@@ -849,6 +849,7 @@ body.modal-open { overflow: hidden; }
     border-color: var(--border-strong);
 }
 .btn-secondary:hover { border-color: var(--text); }
+.btn-secondary:disabled { opacity: 0.55; cursor: default; }
 
 .btn-danger {
     background: transparent;
@@ -856,6 +857,7 @@ body.modal-open { overflow: hidden; }
     border-color: var(--danger);
 }
 .btn-danger:hover { background: var(--danger-bg); }
+.btn-danger:disabled { opacity: 0.55; cursor: default; }
 
 /* ──────────────────────────── detail ──────────────────────────── */
 
@@ -1012,6 +1014,8 @@ body.modal-open { overflow: hidden; }
 .shell-header-right {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 10px;
 }
 
@@ -1207,6 +1211,194 @@ body.modal-open { overflow: hidden; }
 }
 
 /* ─────────────────────── accessibility ─────────────────────── */
+
+.admin-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.admin-lead {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--muted);
+}
+
+.admin-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-heading,
+.admin-invite-title {
+    margin: 0;
+    font-family: var(--font-head);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.admin-add-member {
+    padding: 16px;
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    background: var(--bg-2);
+}
+
+.admin-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-invite {
+    padding: 16px;
+    border: 2px solid var(--success-border);
+    border-radius: 16px;
+    background: var(--success-bg);
+}
+
+.admin-invite-note {
+    margin: 6px 0 12px;
+    line-height: 1.5;
+    color: var(--success-ink);
+}
+
+.admin-invite-code {
+    display: block;
+    padding: 12px;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--success-border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 1.05rem;
+}
+
+.admin-invite-actions,
+.admin-member-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.copy-fallback {
+    position: fixed;
+    left: -9999px;
+    top: 0;
+}
+
+.admin-member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.admin-member {
+    padding: 14px;
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+}
+
+.admin-member-revoked {
+    background: var(--bg-2);
+    opacity: 0.82;
+}
+
+.admin-member-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.admin-member-name {
+    margin: 0;
+    font-family: var(--font-head);
+    font-size: 1.12rem;
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.admin-member-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+}
+
+.admin-badge {
+    padding: 2px 8px;
+    border: 1px solid var(--primary-soft-border);
+    border-radius: 999px;
+    background: var(--primary-soft-bg);
+    color: var(--text);
+    font-family: var(--font-head);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.admin-badge-revoked {
+    border-color: var(--danger);
+    background: var(--danger-bg);
+    color: var(--danger-ink);
+}
+
+.admin-badge-self {
+    border-color: var(--border-strong);
+    background: transparent;
+    color: var(--muted);
+}
+
+.admin-member-meta,
+.admin-member-self-note {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
+.admin-confirm {
+    margin-top: 12px;
+    padding: 14px;
+    border: 2px solid var(--primary-soft-border);
+    border-radius: 14px;
+    background: var(--primary-soft-bg);
+}
+
+.admin-confirm-text {
+    margin: 0 0 12px;
+    color: var(--text);
+    line-height: 1.5;
+}
+
+.admin-audit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-audit-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.92rem;
+    line-height: 1.4;
+}
+
+.admin-audit-text { color: var(--text); }
+.admin-audit-date { flex: 0 0 auto; color: var(--muted); }
 
 a:focus-visible,
 button:focus-visible,
