@@ -184,6 +184,14 @@ function formatDate(epochMs) {
   return new Date(epochMs).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function feedDate(epochMs) {
+  const date = new Date(epochMs);
+  return {
+    key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+    label: date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
+  };
+}
+
 function categoryLabel(cat) {
   return CATEGORY_LABEL[cat] || CATEGORY_LABEL.general;
 }
@@ -359,7 +367,16 @@ function renderFeed(requests) {
     return;
   }
   setFeedStatus(null);
+  let previousDateKey = null;
   for (const req of requests) {
+    const date = feedDate(req.createdAt);
+    if (date.key !== previousDateKey) {
+      const divider = elem("li", "feed-date-divider", date.label);
+      divider.setAttribute("role", "separator");
+      divider.setAttribute("aria-label", date.label);
+      el.feed.appendChild(divider);
+      previousDateKey = date.key;
+    }
     el.feed.appendChild(renderCard(req));
   }
   startCardVisibilityTracking();
@@ -412,6 +429,9 @@ function renderCard(req) {
   if (req.status === "answered") {
     const badge = elem("p", "answered-badge", "In Prayer Log");
     li.appendChild(badge);
+    if (req.snippet) {
+      li.appendChild(elem("p", "card-snippet", req.snippet));
+    }
     if (req.answerNote) {
       li.appendChild(elem("blockquote", "answer-note", req.answerNote));
     }
@@ -1402,6 +1422,18 @@ function openHelp() {
     signOut.addEventListener("click", () => confirmSignOut(account, signOut));
     account.appendChild(signOut);
     modal.appendChild(account);
+
+    const about = elem("section", "help-section");
+    about.appendChild(elem("h3", "help-heading", "About Cenacle"));
+    const aboutText = elem("p", "help-note");
+    aboutText.appendChild(text("Cenacle is an open-source, decentralized prayer app. "));
+    const repoLink = elem("a", "help-link", "Launch your own server or contribute on GitHub.");
+    repoLink.href = "https://github.com/JustinSwain/cenacle";
+    repoLink.target = "_blank";
+    repoLink.rel = "noopener noreferrer";
+    aboutText.appendChild(repoLink);
+    about.appendChild(aboutText);
+    modal.appendChild(about);
   });
 }
 

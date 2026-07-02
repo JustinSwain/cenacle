@@ -423,6 +423,26 @@ button {
     gap: 16px;
 }
 
+.feed-date-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 4px 0;
+    font-family: var(--font-head);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.feed-date-divider::before,
+.feed-date-divider::after {
+    content: "";
+    height: 1px;
+    background: var(--border-strong);
+    flex: 1;
+}
+
 .card {
     background: var(--surface);
     border: 2px solid var(--border);
@@ -1162,6 +1182,14 @@ body.modal-open { overflow: hidden; }
     color: var(--muted);
     margin: 0 0 12px;
 }
+
+.help-link {
+    color: var(--primary);
+    font-weight: 700;
+    text-underline-offset: 2px;
+}
+
+.help-link:hover { color: var(--primary-hover); }
 
 .confirm-box {
     margin-top: 8px;
