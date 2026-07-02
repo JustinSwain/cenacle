@@ -14,3 +14,6 @@ dist/
 # Local database backups (may contain private group data)
 *-backup-*.sql
 cenacle-backup-*.sql
+
+# Local agent instructions
+AGENTS.md

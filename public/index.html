@@ -69,13 +69,27 @@
         <!-- Logged-in shell -->
         <section id="shell" class="shell" hidden>
             <header class="shell-header">
-                <h1 class="shell-title">Prayer</h1>
-                <div class="shell-header-right">
-                    <span id="who" class="who"></span>
-                    <button id="refresh-btn" class="help-btn refresh-btn" type="button" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
-                    <button id="stats-btn" class="help-btn" type="button" aria-label="Group stats" hidden>Stats</button>
-                    <button id="admin-btn" class="help-btn" type="button" aria-label="Administration" hidden>Admin</button>
-                    <button id="help-btn" class="help-btn" type="button" aria-label="Help and settings">Help</button>
+                <div class="shell-identity">
+                    <h1 class="shell-title">Prayer</h1>
+                    <p class="session-identity"><span class="session-label">Signed in as</span> <span id="who" class="who"></span></p>
+                </div>
+                <div class="shell-header-right" role="toolbar" aria-label="App actions">
+                    <div class="shell-action-group" aria-label="Feed actions">
+                        <button id="refresh-btn" class="header-action refresh-btn" type="button" aria-label="Refresh prayer requests">
+                            <span class="refresh-icon" aria-hidden="true">⟳</span>
+                            <span class="action-label">Refresh</span>
+                        </button>
+                    </div>
+                    <div id="admin-actions" class="shell-action-group shell-action-group-admin" aria-label="Group tools" hidden>
+                        <button id="stats-btn" class="header-action" type="button" aria-label="Group stats" hidden>Stats</button>
+                        <button id="admin-btn" class="header-action" type="button" aria-label="Administration" hidden>Admin</button>
+                    </div>
+                    <div class="shell-action-group" aria-label="Support">
+                        <button id="help-btn" class="header-action help-action" type="button" aria-label="Help and settings">
+                            <span class="help-icon" aria-hidden="true">?</span>
+                            <span class="action-label">Help</span>
+                        </button>
+                    </div>
                 </div>
             </header>
 

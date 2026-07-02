@@ -382,13 +382,16 @@ button {
 
 .shell-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 4px 16px;
+    gap: 20px;
+    padding: 4px 4px 18px;
     border-bottom: 2px solid var(--border);
     margin-bottom: 16px;
+}
+
+.shell-identity {
+    min-width: 0;
 }
 
 .shell-title {
@@ -397,11 +400,33 @@ button {
     font-size: 1.9rem;
     margin: 0;
     color: var(--text);
+    line-height: 1.15;
+}
+
+.session-identity {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    margin: 4px 0 0;
+    min-width: 0;
+    line-height: 1.25;
+}
+
+.session-label {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    color: var(--muted);
 }
 
 .who {
-    font-size: 0.95rem;
-    color: var(--muted);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-head);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
 }
 
 .feed-status {
@@ -1013,42 +1038,101 @@ body.modal-open { overflow: hidden; }
 
 .shell-header-right {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 10px;
+    gap: 0;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-soft);
 }
 
-.help-btn {
+.shell-action-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.shell-action-group + .shell-action-group {
+    margin-left: 4px;
+    padding-left: 4px;
+    border-left: 1px solid var(--border);
+}
+
+.header-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     font-family: var(--font-head);
     font-weight: 600;
-    font-size: 0.95rem;
-    min-height: 40px;
-    padding: 6px 14px;
+    font-size: 0.88rem;
+    min-height: 38px;
+    padding: 6px 10px;
     cursor: pointer;
     background: transparent;
     color: var(--muted);
-    border: 2px solid var(--border);
-    border-radius: 12px;
-    transition: border-color 0.2s ease, color 0.2s ease;
+    border: 0;
+    border-radius: 10px;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
-.help-btn:hover { border-color: var(--border-strong); color: var(--text); }
+.header-action:hover {
+    background: var(--bg-2);
+    color: var(--text);
+}
 
-/* Refresh: an icon-only variant of .help-btn. */
+.header-action:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+}
+
 .refresh-btn {
-    padding: 6px 12px;
     line-height: 1;
 }
 .refresh-icon {
     display: inline-block;
-    font-size: 1.25rem;
+    font-size: 1.15rem;
+}
+.help-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    line-height: 1;
 }
 .refresh-btn.is-refreshing .refresh-icon {
     animation: refresh-spin 0.7s linear infinite;
 }
 @keyframes refresh-spin {
     to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+    .shell-header {
+        align-items: stretch;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .shell-identity {
+        flex: 1 1 100%;
+    }
+
+    .shell-header-right {
+        flex: 1 1 100%;
+        justify-content: space-between;
+    }
+
+    .shell-action-group-admin {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
 }
 
 /* Small button used for inline actions like Edit in the detail view. */

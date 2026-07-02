@@ -108,7 +108,7 @@ async function updateName(name) {
   const data = await api("/me", { method: "POST", body: { name } });
   state.member = data.member;
   saveSession({ token: state.token, member: data.member });
-  if (el.who && state.member) el.who.textContent = `Signed in as ${state.member.name}`;
+  if (el.who && state.member) el.who.textContent = state.member.name;
   return data.member;
 }
 
@@ -131,6 +131,7 @@ const el = {
   helpBtn: document.getElementById("help-btn"),
   statsBtn: document.getElementById("stats-btn"),
   adminBtn: document.getElementById("admin-btn"),
+  adminActions: document.getElementById("admin-actions"),
   refreshBtn: document.getElementById("refresh-btn"),
   feedDescription: document.getElementById("feed-description"),
   themeToggle: document.getElementById("theme-toggle"),
@@ -155,13 +156,15 @@ function showShell() {
   el.gate.hidden = true;
   el.shell.hidden = false;
   if (state.member) {
-    el.who.textContent = `Signed in as ${state.member.name}`;
+    el.who.textContent = state.member.name;
   }
   syncAdminControls();
 }
 
 function syncAdminControls() {
-  if (el.adminBtn) el.adminBtn.hidden = state.member?.role !== "admin";
+  const isAdmin = state.member?.role === "admin";
+  if (el.adminActions) el.adminActions.hidden = !isAdmin;
+  if (el.adminBtn) el.adminBtn.hidden = !isAdmin;
 }
 
 function setFeedStatus(message) {
@@ -283,7 +286,7 @@ async function refreshTabDots() {
   if (state.member && data.member && data.member.name) {
     state.member = data.member;
     saveSession({ token: state.token, member: data.member });
-    el.who.textContent = `Signed in as ${state.member.name}`;
+    el.who.textContent = state.member.name;
     syncAdminControls();
   }
   const newTabs = data.newTabs || {};
