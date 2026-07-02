@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS members (
   token_hash    TEXT NOT NULL UNIQUE,            -- SHA-256 of the invite code; raw code never stored
   token_version INTEGER NOT NULL DEFAULT 1,      -- bump to instantly invalidate all live sessions
   role          TEXT NOT NULL DEFAULT 'member',  -- 'member' | 'admin'
+  active        INTEGER NOT NULL DEFAULT 1,      -- 0 revokes code redemption and all sessions
   joined_at     INTEGER NOT NULL,                -- epoch ms
   last_seen_at  INTEGER                          -- epoch ms, frozen first-visit baseline for "new to you"
 );
@@ -56,6 +57,15 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   succeeded   INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id               INTEGER PRIMARY KEY,
+  actor_id         INTEGER NOT NULL REFERENCES members(id),
+  action           TEXT NOT NULL,
+  target_member_id INTEGER NOT NULL REFERENCES members(id),
+  details          TEXT,
+  created_at       INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_prayers_request ON prayers(request_id);
 CREATE INDEX IF NOT EXISTS idx_prayers_member  ON prayers(member_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_prayers_request_member_unique
@@ -64,3 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_updates_request ON updates(request_id);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_subject_time
   ON login_attempts(subject, created_at);
+CREATE INDEX IF NOT EXISTS idx_members_active_role
+  ON members(active, role);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_created
+  ON admin_audit(created_at DESC);

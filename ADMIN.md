@@ -33,12 +33,33 @@ That single command is the workhorse for most tasks below.
 
 ---
 
+## Routine administration in the app
+
+After you create the first administrator with the CLI, that person can handle
+ordinary membership tasks from any signed-in device. Tap **Admin** in the app
+to:
+
+- add members and administrators;
+- copy a new invite link while Cenacle shows it once;
+- replace a lost or exposed invite;
+- revoke or restore access;
+- change member roles; and
+- review recent administrative changes.
+
+Cenacle keeps deployment, migrations, secrets, and backups in Cloudflare and
+the CLI. The commands below remain useful for initial setup, recovery, and
+operators who prefer a terminal.
+
+---
+
 ## Members
 
 ### Add a new member
 
-Generates a code, prints a ready-to-share link, and stores only the *hash* of
-the code (the raw code is never saved - copy it when it prints).
+In the app, tap **Admin**, enter the person's name, and tap **Create invite**.
+Copy the link before leaving the screen; Cenacle stores only the code's hash.
+
+For initial setup or CLI recovery, this command performs the same operation:
 
 ```
 node scripts/seed-members.mjs --remote "Firstname Lastname"
@@ -70,27 +91,36 @@ can "Add to Home Screen" to install it like an app.
 
 ### Add a new admin
 
-Names listed after `--admin` (up to a `--` separator) become admins; names
-after `--` are regular members:
+In the app, select **Make this person an administrator** while creating the
+invite, or tap **Make admin** on an existing member.
+
+For the first administrator or CLI recovery, names listed after `--admin` (up
+to a `--` separator) become admins; names after `--` become regular members:
 
 ```
 node scripts/seed-members.mjs --remote --admin "Newadmin" -- "Regularmember"
 ```
 
-Admins can see the Stats panel and remove anyone's post.
+Admins can manage members, see group statistics, and remove anyone's post.
 
 ### See the current members
 
+Tap **Admin** for the member list. From the CLI, run:
+
 ```
-npx wrangler d1 execute cenacle_db --remote --command "SELECT id, name, role, joined_at, last_seen_at FROM members ORDER BY name;"
+npx wrangler d1 execute cenacle_db --remote --command "SELECT id, name, role, active, joined_at, last_seen_at FROM members ORDER BY name;"
 ```
 
 `id` is the number you'll use in other commands. `joined_at` and `last_seen_at`
 are timestamps in milliseconds; `last_seen_at` is set on a member's first visit
 (it's the frozen baseline for the "new to you" highlight), so an empty
-`last_seen_at` means they've never logged in yet.
+`last_seen_at` means they've never logged in yet. `active = 0` means an admin
+revoked the member's access.
 
 ### Make someone an admin (or take it away)
+
+Use **Make admin** or **Make member** in the app. Cenacle prevents anyone from
+removing the final active administrator. The CLI fallback is:
 
 ```
 npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET role = 'admin' WHERE name = 'Alice';"
@@ -112,9 +142,11 @@ npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET name =
 
 ### Give someone a new code (they lost it / it leaked)
 
-This is the closest thing to a password reset. The script generates a fresh
-code, stores only its hash, bumps `token_version` so old sessions stop working,
-and prints the new link to hand out:
+Tap **New invite** beside the member in the app. Cenacle generates a fresh code,
+stores only its hash, and invalidates the old link and every current session.
+
+The CLI fallback performs the same reset and restores access if you previously
+revoked it:
 
 ```
 node scripts/reset-member-code.mjs --remote --url https://your-group.example.workers.dev "Alice"
@@ -131,19 +163,16 @@ before closing the terminal.
 
 ### Lock someone out immediately (revoke access)
 
-Bumping `token_version` invalidates every device they're currently logged in
-on. Their old code also stops minting new sessions until you reissue one.
+Tap **Revoke access** in the app. Cenacle preserves the member's posts, rejects
+their invite, and invalidates every device where they signed in.
+
+The CLI fallback sets `active` to `0` and increments `token_version`:
 
 ```
-npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET token_version = token_version + 1 WHERE name = 'Alice';"
+npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET active = 0, token_version = token_version + 1 WHERE name = 'Alice';"
 ```
 
-To lock them out *and* make sure their code can never be used again, also
-overwrite the hash with garbage:
-
-```
-npx wrangler d1 execute cenacle_db --remote --command "UPDATE members SET token_version = token_version + 1, token_hash = 'revoked-' || id WHERE name = 'Alice';"
-```
+Use **Restore with new invite** or `reset-member-code.mjs` to restore access.
 
 ### Log *everyone* out at once
 
@@ -336,12 +365,12 @@ npm run deploy
 
 | I want to... | Where | How |
 |---|---|---|
-| Add a member | terminal | `node scripts/seed-members.mjs --remote "Name"` |
-| Add an admin | terminal | `node scripts/seed-members.mjs --remote --admin "Name"` |
-| List members | terminal | `SELECT ... FROM members` |
-| Make someone admin | terminal | `UPDATE members SET role='admin' ...` |
-| Give a new code | terminal | `node scripts/reset-member-code.mjs --remote "Name"` |
-| Lock someone out | terminal | `UPDATE members SET token_version = token_version + 1 ...` |
+| Add a member | **app** | **Admin** -> **Create invite** |
+| Add an admin | **app** | create with the admin checkbox, or **Make admin** |
+| List members | **app** | **Admin** |
+| Make someone admin | **app** | **Make admin** |
+| Give a new code | **app** | **New invite** |
+| Lock someone out | **app** | **Revoke access** |
 | Log everyone out | terminal | `wrangler secret put SESSION_SECRET` |
 | Remove a junk post | **app** | open post -> **Remove** |
 | Restore a post | terminal | `UPDATE requests SET status='open' ...` |

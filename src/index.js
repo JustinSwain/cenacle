@@ -19,6 +19,15 @@ const SESSION_SECRET_MIN = 32;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_IP_MAX = 12;
 const LOGIN_CODE_MAX = 6;
+const VALID_ROLES = new Set(["member", "admin"]);
+
+// Human-readable invite codes. Keep this list aligned with
+// scripts/invite-utils.mjs so CLI- and app-created invites share one format.
+const INVITE_WORDS = [
+  "coral", "amber", "maple", "river", "cedar", "ember", "lunar", "pearl",
+  "olive", "raven", "slate", "willow", "cobalt", "saffron", "indigo", "hazel",
+  "aspen", "flint", "ivory", "marble", "onyx", "quartz", "topaz", "violet",
+];
 
 // Branding palettes. Keys match the THEME var; values are the page background
 // used for the manifest and the <meta theme-color> tints. The full colour sets
@@ -146,6 +155,25 @@ async function dispatch(request, env, path) {
     return withMember(request, env, (member) => handleStats(env, member));
   }
 
+  if (method === "GET" && path === "/admin/members") {
+    return withAdmin(request, env, (member) => handleAdminMembers(env, member));
+  }
+
+  if (method === "POST" && path === "/admin/members") {
+    return withAdmin(request, env, (member) => handleCreateMember(request, env, member));
+  }
+
+  const adminMemberMatch = path.match(/^\/admin\/members\/(\d+)\/(reissue|revoke|role)$/);
+  if (method === "POST" && adminMemberMatch) {
+    const id = Number(adminMemberMatch[1]);
+    const action = adminMemberMatch[2];
+    return withAdmin(request, env, (member) => {
+      if (action === "reissue") return handleReissueMember(request, env, member, id);
+      if (action === "revoke") return handleRevokeMember(env, member, id);
+      return handleMemberRole(request, env, member, id);
+    });
+  }
+
   if (method === "GET" && path === "/requests") {
     return withMember(request, env, (member) => handleListRequests(request, env, member));
   }
@@ -219,7 +247,7 @@ async function handleSession(request, env) {
   const member = await env.DB.prepare(`
     SELECT id, name, role, token_version, last_seen_at
     FROM members
-    WHERE token_hash = ?
+    WHERE token_hash = ? AND active = 1
   `).bind(tokenHash).first();
 
   if (!member) {
@@ -250,6 +278,15 @@ async function withMember(request, env, handler) {
   return handler(member);
 }
 
+// Admin routes always enforce the role server-side. Hiding the UI button is
+// only a convenience; it never acts as the authorization boundary.
+async function withAdmin(request, env, handler) {
+  const member = await requireMember(request, env);
+  if (!member) return json({ error: "Unauthorized" }, 401);
+  if (member.role !== "admin") return json({ error: "You need administrator access." }, 403);
+  return handler(member);
+}
+
 async function requireMember(request, env) {
   const auth = request.headers.get("Authorization") || "";
   const match = auth.match(/^Bearer\s+(.+)$/i);
@@ -261,7 +298,7 @@ async function requireMember(request, env) {
   const member = await env.DB.prepare(`
     SELECT id, name, role, token_version, last_seen_at
     FROM members
-    WHERE id = ?
+    WHERE id = ? AND active = 1
   `).bind(payload.memberId).first();
 
   if (!member) return null;
@@ -483,6 +520,259 @@ async function handleUpdateProfile(request, env, member) {
 
 // ─────────────────────────────── stats ───────────────────────────────
 
+// Administration
+//
+// Routine member administration stays inside Cenacle; infrastructure-level
+// operations such as migrations, secrets, and backups remain in Cloudflare.
+async function handleAdminMembers(env, admin) {
+  const [memberRows, auditRows] = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT m.id, m.name, m.role, m.active, m.joined_at, m.last_seen_at,
+        (SELECT COUNT(*) FROM requests r
+          WHERE r.author_id = m.id AND r.status != 'archived') AS request_count
+      FROM members m
+      ORDER BY m.active DESC, LOWER(m.name), m.id
+      LIMIT 500
+    `),
+    env.DB.prepare(`
+      SELECT a.action, a.created_at, actor.name AS actor_name, target.name AS target_name
+      FROM admin_audit a
+      JOIN members actor ON actor.id = a.actor_id
+      JOIN members target ON target.id = a.target_member_id
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT 20
+    `),
+  ]);
+
+  return json({
+    members: (memberRows.results ?? []).map((row) => serializeAdminMember(row, admin.id)),
+    audit: (auditRows.results ?? []).map((row) => ({
+      action: String(row.action ?? ""),
+      actor: String(row.actor_name ?? ""),
+      target: String(row.target_name ?? ""),
+      createdAt: toInt(row.created_at),
+    })),
+  });
+}
+
+async function handleCreateMember(request, env, admin) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const name = cleanText(body?.name, NAME_MAX);
+  const role = body?.role ?? "member";
+  if (!name) return json({ error: "Please enter a name." }, 400);
+  if (!VALID_ROLES.has(role)) return json({ error: "Invalid member role." }, 400);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const invite = await newInvite();
+    const now = Date.now();
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO members (name, token_hash, token_version, role, active, joined_at)
+          VALUES (?, ?, 1, ?, 1, ?)
+        `).bind(name, invite.hash, role, now),
+        env.DB.prepare(`
+          INSERT INTO admin_audit (actor_id, action, target_member_id, details, created_at)
+          SELECT ?, 'member_created', id, ?, ? FROM members WHERE token_hash = ?
+        `).bind(admin.id, JSON.stringify({ role }), now, invite.hash),
+      ]);
+      const member = await env.DB.prepare(`
+        SELECT id, name, role, active, joined_at, last_seen_at, 0 AS request_count
+        FROM members WHERE token_hash = ?
+      `).bind(invite.hash).first();
+      return json({
+        member: serializeAdminMember(member, admin.id),
+        invite: inviteResponse(request, invite.code),
+      }, 201);
+    } catch (err) {
+      if (!isTokenHashCollision(err)) throw err;
+    }
+  }
+
+  return json({ error: "Could not generate a unique invite. Try again." }, 503);
+}
+
+async function handleReissueMember(request, env, admin, id) {
+  if (id === admin.id) {
+    return json({ error: "Another administrator must reset your invite." }, 400);
+  }
+
+  const target = await findAdminMember(env, id, admin.id);
+  if (!target) return json({ error: "Cenacle could not find that member." }, 404);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const invite = await newInvite();
+    const now = Date.now();
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`
+          UPDATE members
+          SET token_hash = ?, token_version = token_version + 1, active = 1
+          WHERE id = ?
+        `).bind(invite.hash, id),
+        env.DB.prepare(`
+          INSERT INTO admin_audit (actor_id, action, target_member_id, details, created_at)
+          VALUES (?, 'invite_reissued', ?, NULL, ?)
+        `).bind(admin.id, id, now),
+      ]);
+      const member = await findAdminMember(env, id, admin.id);
+      return json({ member, invite: inviteResponse(request, invite.code) });
+    } catch (err) {
+      if (!isTokenHashCollision(err)) throw err;
+    }
+  }
+
+  return json({ error: "Could not generate a unique invite. Try again." }, 503);
+}
+
+async function handleRevokeMember(env, admin, id) {
+  if (id === admin.id) {
+    return json({ error: "You cannot revoke your own access from this screen." }, 400);
+  }
+
+  const target = await findAdminMember(env, id, admin.id);
+  if (!target) return json({ error: "Cenacle could not find that member." }, 404);
+  if (!target.active) return json({ error: "This member cannot currently access Cenacle." }, 409);
+
+  const now = Date.now();
+  const [, updateResult] = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO admin_audit (actor_id, action, target_member_id, details, created_at)
+      SELECT ?, 'access_revoked', id, NULL, ?
+      FROM members
+      WHERE id = ? AND active = 1
+        AND (role != 'admin' OR (
+          SELECT COUNT(*) FROM members WHERE role = 'admin' AND active = 1
+        ) > 1)
+    `).bind(admin.id, now, id),
+    env.DB.prepare(`
+      UPDATE members
+      SET active = 0, token_version = token_version + 1
+      WHERE id = ? AND active = 1
+        AND (role != 'admin' OR (
+          SELECT COUNT(*) FROM members WHERE role = 'admin' AND active = 1
+        ) > 1)
+    `).bind(id),
+  ]);
+
+  if (toInt(updateResult?.meta?.changes) !== 1) {
+    return json({ error: "Cenacle must keep at least one active administrator." }, 409);
+  }
+  return json({ member: await findAdminMember(env, id, admin.id) });
+}
+
+async function handleMemberRole(request, env, admin, id) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const role = body?.role;
+  if (!VALID_ROLES.has(role)) return json({ error: "Invalid member role." }, 400);
+  if (id === admin.id) {
+    return json({ error: "Another administrator must change your role." }, 400);
+  }
+
+  const target = await findAdminMember(env, id, admin.id);
+  if (!target) return json({ error: "Cenacle could not find that member." }, 404);
+  if (target.role === role) return json({ member: target });
+
+  const now = Date.now();
+  const action = role === "admin" ? "admin_granted" : "admin_removed";
+  const [, updateResult] = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO admin_audit (actor_id, action, target_member_id, details, created_at)
+      SELECT ?, ?, id, ?, ?
+      FROM members
+      WHERE id = ? AND (
+        ? = 'admin' OR role != 'admin' OR active = 0 OR (
+          SELECT COUNT(*) FROM members WHERE role = 'admin' AND active = 1
+        ) > 1
+      )
+    `).bind(admin.id, action, JSON.stringify({ role }), now, id, role),
+    env.DB.prepare(`
+      UPDATE members SET role = ?
+      WHERE id = ? AND (
+        ? = 'admin' OR role != 'admin' OR active = 0 OR (
+          SELECT COUNT(*) FROM members WHERE role = 'admin' AND active = 1
+        ) > 1
+      )
+    `).bind(role, id, role),
+  ]);
+
+  if (toInt(updateResult?.meta?.changes) !== 1) {
+    return json({ error: "Cenacle must keep at least one active administrator." }, 409);
+  }
+  return json({ member: await findAdminMember(env, id, admin.id) });
+}
+
+async function findAdminMember(env, id, viewerId) {
+  const row = await env.DB.prepare(`
+    SELECT m.id, m.name, m.role, m.active, m.joined_at, m.last_seen_at,
+      (SELECT COUNT(*) FROM requests r
+        WHERE r.author_id = m.id AND r.status != 'archived') AS request_count
+    FROM members m WHERE m.id = ?
+  `).bind(id).first();
+  return row ? serializeAdminMember(row, viewerId) : null;
+}
+
+function serializeAdminMember(row, viewerId) {
+  return {
+    id: toInt(row.id),
+    name: String(row.name ?? ""),
+    role: row.role === "admin" ? "admin" : "member",
+    active: toInt(row.active) === 1,
+    joinedAt: toInt(row.joined_at),
+    lastSeenAt: row.last_seen_at == null ? null : toInt(row.last_seen_at),
+    requestCount: toInt(row.request_count),
+    isSelf: toInt(row.id) === toInt(viewerId),
+  };
+}
+
+function inviteResponse(request, code) {
+  const url = new URL("/", request.url);
+  url.searchParams.set("code", code);
+  return { code, url: url.toString() };
+}
+
+async function newInvite() {
+  const code = makeInviteCode();
+  return { code, hash: await sha256Hex(code) };
+}
+
+function makeInviteCode() {
+  const firstIndex = secureRandomInt(INVITE_WORDS.length);
+  let secondIndex = secureRandomInt(INVITE_WORDS.length - 1);
+  if (secondIndex >= firstIndex) secondIndex += 1;
+  const number = 1000 + secureRandomInt(9000);
+  return `${INVITE_WORDS[firstIndex]}-${INVITE_WORDS[secondIndex]}-${number}`;
+}
+
+// Rejection sampling avoids the modulo bias that `% maxExclusive` introduces.
+function secureRandomInt(maxExclusive) {
+  const range = 0x100000000;
+  const limit = range - (range % maxExclusive);
+  const values = new Uint32Array(1);
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= limit);
+  return values[0] % maxExclusive;
+}
+
+function isTokenHashCollision(err) {
+  return String(err?.message ?? err).includes("UNIQUE constraint failed: members.token_hash");
+}
+
+// Stats
+//
 // Optional feed counts for everyone; the admin block is included only for
 // admins (gated server-side, never trust the client). Feed counts stay disabled
 // unless the deployment admin explicitly enables them.

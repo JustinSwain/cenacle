@@ -130,6 +130,7 @@ const el = {
   tabs: Array.from(document.querySelectorAll(".tab")),
   helpBtn: document.getElementById("help-btn"),
   statsBtn: document.getElementById("stats-btn"),
+  adminBtn: document.getElementById("admin-btn"),
   refreshBtn: document.getElementById("refresh-btn"),
   feedDescription: document.getElementById("feed-description"),
   themeToggle: document.getElementById("theme-toggle"),
@@ -156,6 +157,11 @@ function showShell() {
   if (state.member) {
     el.who.textContent = `Signed in as ${state.member.name}`;
   }
+  syncAdminControls();
+}
+
+function syncAdminControls() {
+  if (el.adminBtn) el.adminBtn.hidden = state.member?.role !== "admin";
 }
 
 function setFeedStatus(message) {
@@ -278,6 +284,7 @@ async function refreshTabDots() {
     state.member = data.member;
     saveSession({ token: state.token, member: data.member });
     el.who.textContent = `Signed in as ${state.member.name}`;
+    syncAdminControls();
   }
   const newTabs = data.newTabs || {};
   setTabDot("open", !!newTabs.open);
@@ -1466,6 +1473,270 @@ function confirmSignOut(container, triggerBtn) {
 
 // Fetch optional feed counts and admin stats. Defensive: if /stats is
 // unavailable, the description and Stats button stay hidden.
+function openAdminPanel() {
+  if (state.member?.role !== "admin") return;
+  openModal((modal) => {
+    modalHeader(modal, "Administration");
+    modal.appendChild(elem("p", "modal-loading", "Loading members..."));
+  });
+  void loadAdminPanel();
+}
+
+async function loadAdminPanel(inviteResult = null) {
+  try {
+    const data = await api("/admin/members");
+    renderModalContent((modal) => renderAdminPanel(modal, data, inviteResult));
+  } catch (err) {
+    if (err.status === 401) { closeModal(); return handleExpiredSession(); }
+    if (err.status === 403) syncAdminControls();
+    renderModalContent((modal) => {
+      modalHeader(modal, "Administration");
+      modal.appendChild(elem("p", "modal-loading",
+        isNetworkError(err) ? "Could not connect. Try again." : (err.message || "Could not load members.")));
+    });
+  }
+}
+
+function renderAdminPanel(modal, data, inviteResult) {
+  modalHeader(modal, "Administration");
+  const wrap = elem("div", "admin-dashboard");
+  wrap.appendChild(elem("p", "admin-lead",
+    "Manage routine access here. Deployment, secrets, migrations, and backups stay in Cloudflare and the CLI."));
+
+  if (inviteResult) wrap.appendChild(renderAdminInvite(inviteResult));
+  wrap.appendChild(renderAddMemberForm());
+
+  const membersSection = elem("section", "admin-section");
+  membersSection.appendChild(elem("h3", "admin-heading", "Members"));
+  const members = Array.isArray(data.members) ? data.members : [];
+  const list = elem("div", "admin-member-list");
+  for (const member of members) list.appendChild(renderAdminMember(member));
+  membersSection.appendChild(list);
+  wrap.appendChild(membersSection);
+
+  const audit = Array.isArray(data.audit) ? data.audit : [];
+  if (audit.length) wrap.appendChild(renderAdminAudit(audit));
+  modal.appendChild(wrap);
+}
+
+function renderAddMemberForm() {
+  const section = elem("section", "admin-section admin-add-member");
+  section.appendChild(elem("h3", "admin-heading", "Add a member"));
+  const form = elem("form", "admin-add-form");
+  const name = elem("input", "field-input");
+  name.type = "text";
+  name.maxLength = 40;
+  name.placeholder = "Name";
+  name.required = true;
+  form.appendChild(labeled("Name", name));
+
+  const roleRow = elem("label", "checkbox-row");
+  const role = document.createElement("input");
+  role.type = "checkbox";
+  roleRow.appendChild(role);
+  roleRow.appendChild(text("Make this person an administrator"));
+  form.appendChild(roleRow);
+
+  const error = elem("p", "form-error");
+  error.hidden = true;
+  form.appendChild(error);
+  const actions = elem("div", "modal-actions");
+  const submit = elem("button", "btn-primary", "Create invite");
+  submit.type = "submit";
+  actions.appendChild(submit);
+  form.appendChild(actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const memberName = name.value.trim();
+    if (!memberName) return showFormError(error, "Please enter a name.");
+    submit.disabled = true;
+    try {
+      const result = await api("/admin/members", {
+        method: "POST",
+        body: { name: memberName, role: role.checked ? "admin" : "member" },
+      });
+      await loadAdminPanel({ name: result.member.name, ...result.invite });
+    } catch (err) {
+      if (err.status === 401) { closeModal(); return handleExpiredSession(); }
+      showFormError(error, isNetworkError(err) ? "Could not connect. Try again." : err.message);
+      submit.disabled = false;
+    }
+  });
+
+  section.appendChild(form);
+  return section;
+}
+
+function renderAdminInvite(invite) {
+  const box = elem("section", "admin-invite");
+  box.setAttribute("role", "status");
+  box.appendChild(elem("h3", "admin-invite-title", `Invite for ${invite.name}`));
+  box.appendChild(elem("p", "admin-invite-note",
+    "Copy this now. Cenacle stores only its hash and cannot show this code again."));
+  box.appendChild(elem("code", "admin-invite-code", invite.code));
+  const actions = elem("div", "admin-invite-actions");
+  actions.appendChild(adminCopyButton(invite.code, "Copy code"));
+  actions.appendChild(adminCopyButton(invite.url, "Copy invite link"));
+  box.appendChild(actions);
+  return box;
+}
+
+function adminCopyButton(value, label) {
+  const button = elem("button", "btn-secondary btn-small", label);
+  button.type = "button";
+  button.addEventListener("click", async () => {
+    const copied = await copyTextValue(value);
+    button.textContent = copied ? "Copied" : "Select and copy";
+    setTimeout(() => { button.textContent = label; }, 2000);
+  });
+  return button;
+}
+
+async function copyTextValue(value) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch { /* use the selection fallback below */ }
+
+  const temporary = elem("textarea", "copy-fallback");
+  temporary.value = value;
+  temporary.setAttribute("readonly", "");
+  document.body.appendChild(temporary);
+  temporary.select();
+  let copied = false;
+  try { copied = document.execCommand("copy"); } catch { copied = false; }
+  temporary.remove();
+  return copied;
+}
+
+function renderAdminMember(member) {
+  const card = elem("article", member.active ? "admin-member" : "admin-member admin-member-revoked");
+  const header = elem("div", "admin-member-head");
+  header.appendChild(elem("h4", "admin-member-name", member.name));
+  const badges = elem("div", "admin-member-badges");
+  if (member.role === "admin") badges.appendChild(elem("span", "admin-badge", "Admin"));
+  if (!member.active) badges.appendChild(elem("span", "admin-badge admin-badge-revoked", "Revoked"));
+  if (member.isSelf) badges.appendChild(elem("span", "admin-badge admin-badge-self", "You"));
+  header.appendChild(badges);
+  card.appendChild(header);
+
+  const joined = new Date(member.joinedAt).toLocaleDateString(undefined, {
+    month: "short", day: "numeric", year: "numeric",
+  });
+  const activity = member.lastSeenAt
+    ? `Last opened ${formatDate(member.lastSeenAt)}`
+    : "Never signed in";
+  const requests = `${toCount(member.requestCount)} ${toCount(member.requestCount) === 1 ? "request" : "requests"}`;
+  card.appendChild(elem("p", "admin-member-meta", `Joined ${joined} - ${activity} - ${requests}`));
+
+  if (member.isSelf) {
+    card.appendChild(elem("p", "admin-member-self-note",
+      "Ask another administrator to change your role or reset your access."));
+    return card;
+  }
+
+  const actions = elem("div", "admin-member-actions");
+  const reissueLabel = member.active ? "New invite" : "Restore with new invite";
+  const reissue = elem("button", "btn-secondary btn-small", reissueLabel);
+  reissue.type = "button";
+  reissue.addEventListener("click", () => showAdminConfirmation(card, actions, {
+    message: member.active
+      ? `Issue ${member.name} a new invite? Their old link and every current session will stop working.`
+      : `Restore ${member.name}'s access with a fresh invite?`,
+    label: reissueLabel,
+    onConfirm: async () => {
+      const result = await api(`/admin/members/${member.id}/reissue`, { method: "POST" });
+      await loadAdminPanel({ name: result.member.name, ...result.invite });
+    },
+  }));
+  actions.appendChild(reissue);
+
+  const nextRole = member.role === "admin" ? "member" : "admin";
+  const roleLabel = member.role === "admin" ? "Make member" : "Make admin";
+  const roleButton = elem("button", "btn-secondary btn-small", roleLabel);
+  roleButton.type = "button";
+  roleButton.addEventListener("click", () => showAdminConfirmation(card, actions, {
+    message: `${roleLabel} for ${member.name}?`,
+    label: roleLabel,
+    onConfirm: async () => {
+      await api(`/admin/members/${member.id}/role`, { method: "POST", body: { role: nextRole } });
+      await loadAdminPanel();
+    },
+  }));
+  actions.appendChild(roleButton);
+
+  if (member.active) {
+    const revoke = elem("button", "btn-danger btn-small", "Revoke access");
+    revoke.type = "button";
+    revoke.addEventListener("click", () => showAdminConfirmation(card, actions, {
+      message: `Revoke ${member.name}'s access? Their invite and every current session will stop working immediately. Their posts will remain.`,
+      label: "Revoke access",
+      danger: true,
+      onConfirm: async () => {
+        await api(`/admin/members/${member.id}/revoke`, { method: "POST" });
+        await loadAdminPanel();
+      },
+    }));
+    actions.appendChild(revoke);
+  }
+  card.appendChild(actions);
+  return card;
+}
+
+function showAdminConfirmation(card, actions, options) {
+  actions.hidden = true;
+  const box = elem("div", options.danger ? "confirm-box" : "admin-confirm");
+  box.appendChild(elem("p", options.danger ? "confirm-text" : "admin-confirm-text", options.message));
+  const error = elem("p", "form-error");
+  error.hidden = true;
+  box.appendChild(error);
+  const row = elem("div", "modal-actions");
+  const cancel = elem("button", "btn-secondary btn-small", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => { box.remove(); actions.hidden = false; });
+  const confirm = elem("button", `${options.danger ? "btn-danger" : "btn-primary"} btn-small`, options.label);
+  confirm.type = "button";
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    try {
+      await options.onConfirm();
+    } catch (err) {
+      if (err.status === 401) { closeModal(); return handleExpiredSession(); }
+      showFormError(error, isNetworkError(err) ? "Could not connect. Try again." : err.message);
+      confirm.disabled = false;
+    }
+  });
+  row.appendChild(cancel);
+  row.appendChild(confirm);
+  box.appendChild(row);
+  card.appendChild(box);
+  confirm.focus();
+}
+
+function renderAdminAudit(audit) {
+  const section = elem("section", "admin-section");
+  section.appendChild(elem("h3", "admin-heading", "Recent changes"));
+  const list = elem("ul", "admin-audit-list");
+  for (const entry of audit) {
+    const messages = {
+      member_created: `${entry.actor} added ${entry.target}.`,
+      invite_reissued: `${entry.actor} issued ${entry.target} a new invite.`,
+      access_revoked: `${entry.actor} revoked ${entry.target}'s access.`,
+      admin_granted: `${entry.actor} made ${entry.target} an administrator.`,
+      admin_removed: `${entry.actor} made ${entry.target} a member.`,
+    };
+    const item = elem("li", "admin-audit-item");
+    item.appendChild(elem("span", "admin-audit-text", messages[entry.action] || `${entry.actor} updated ${entry.target}.`));
+    item.appendChild(elem("time", "admin-audit-date", formatDate(entry.createdAt)));
+    list.appendChild(item);
+  }
+  section.appendChild(list);
+  return section;
+}
+
 async function loadStats() {
   let data;
   try {
@@ -1674,6 +1945,7 @@ for (const t of el.tabs) {
 el.newBtn.addEventListener("click", openCreateForm);
 el.helpBtn.addEventListener("click", openHelp);
 el.statsBtn.addEventListener("click", openStatsPanel);
+if (el.adminBtn) el.adminBtn.addEventListener("click", openAdminPanel);
 if (el.refreshBtn) el.refreshBtn.addEventListener("click", () => refreshAll({ force: true }));
 
 // Refresh when the app returns to the foreground (the practical "live" trigger

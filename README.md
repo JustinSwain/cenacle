@@ -20,7 +20,7 @@ anyone else's.
 ## Features
 
 - **Per-person invite codes** - each member gets a unique typed link; no
-  passwords or email. Revoke or reissue access in one command.
+  passwords or email. Admins can issue, revoke, and replace invites in the app.
 - **Active / Prayer Log / Mine feeds** - browse current requests, look back on
   the ones that have closed, and find your own.
 - **"I prayed" taps** - let people know they're being prayed for without turning
@@ -29,8 +29,9 @@ anyone else's.
 - **Prayer Log** - move a request out of the active list with a closing note (a
   final update, praise report, or reason it no longer needs to stay active).
 - **Updates thread** - add follow-ups to a request over time.
-- **Admin stats & moderation** - a group overview and the ability to remove any
-  post.
+- **In-app administration** - add members, issue one-time invite links, revoke
+  access, manage roles, review recent changes, and moderate posts.
+- **Admin stats** - a private group overview for administrators.
 - **Light & dark mode** with three color palettes (warm, cool, neutral).
 - **Installable** - "Add to Home Screen" on phones for an app-like experience.
 - **Private by default** - `noindex`, no trackers, no third-party calls.
