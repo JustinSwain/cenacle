@@ -840,7 +840,7 @@ function updateCachedRequest(id, update) {
   }
 }
 
-function renderDetail(req) {
+function renderDetail(req, { updateDraft = "" } = {}) {
   openModal((modal) => {
     modalHeader(modal, req.title);
 
@@ -913,7 +913,7 @@ function renderDetail(req) {
     // Add an update. Logged requests only accept owner updates.
     const canPostUpdate = req.status === "open" || (req.status === "answered" && req.isMine);
     if (canPostUpdate) {
-      modal.appendChild(renderUpdateForm(req));
+      modal.appendChild(renderUpdateForm(req, { updateDraft }));
     }
     // Author-only actions.
     if (req.isMine) {
@@ -1044,36 +1044,69 @@ function renderUpdates(req) {
   return wrap;
 }
 
-function renderUpdateForm(req) {
+function renderUpdateForm(req, { updateDraft = "" } = {}) {
   const form = elem("form", "update-form");
+  const ownerOpenPost = req.isMine && req.status === "open";
+  if (ownerOpenPost) {
+    form.appendChild(elem("p", "update-form-title", "Share an update"));
+    form.appendChild(elem("p", "update-form-note",
+      "Post it as a progress update, or move this prayer to the Prayer Log with the same note."));
+  }
+
   const field = elem("textarea", "field-input field-textarea");
   field.rows = 2;
   field.maxLength = 2000;
-  field.placeholder = req.status === "answered"
+  field.placeholder = ownerOpenPost
+    ? "Add a progress update, encouragement, or closing note..."
+    : req.status === "answered"
     ? "Add an update to this logged prayer..."
     : "Add an update or a word of encouragement...";
+  if (updateDraft) field.value = updateDraft;
   form.appendChild(field);
 
   const errLine = elem("p", "form-error");
   errLine.hidden = true;
   form.appendChild(errLine);
 
-  const submit = elem("button", "btn-primary", "Post update");
-  submit.type = "submit";
-  form.appendChild(submit);
+  let updateBtn;
+  let logBtn;
+  if (ownerOpenPost) {
+    const actions = elem("div", "update-actions");
+    logBtn = elem("button", "btn-secondary", "Move to Prayer Log");
+    logBtn.type = "submit";
+    logBtn.value = "log";
+    updateBtn = elem("button", "btn-primary", "Post update");
+    updateBtn.type = "submit";
+    updateBtn.value = "update";
+    actions.appendChild(logBtn);
+    actions.appendChild(updateBtn);
+    form.appendChild(actions);
+  } else {
+    updateBtn = elem("button", "btn-primary", "Post update");
+    updateBtn.type = "submit";
+    updateBtn.value = "update";
+    form.appendChild(updateBtn);
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const value = field.value.trim();
-    if (!value) return;
-    submit.disabled = true;
+    const action = ownerOpenPost && e.submitter?.value === "log" ? "log" : "update";
+    if (!value && action === "update") return;
+    if (action === "log") {
+      openPrayerLogConfirm(req, value);
+      return;
+    }
+    if (updateBtn) updateBtn.disabled = true;
+    if (logBtn) logBtn.disabled = true;
     try {
       const data = await api(`/requests/${req.id}/update`, { method: "POST", body: { body: value } });
       renderDetail(data.request);
     } catch (err) {
       if (err.status === 401) { closeModal(); return handleExpiredSession(); }
       showFormError(errLine, "Could not post that. Try again.");
-      submit.disabled = false;
+      if (updateBtn) updateBtn.disabled = false;
+      if (logBtn) logBtn.disabled = false;
     }
   });
   return form;
@@ -1081,16 +1114,6 @@ function renderUpdateForm(req) {
 
 function renderAuthorActions(req) {
   const wrap = elem("div", "author-actions");
-
-  // Moving to the Prayer Log opens its own dedicated screen (see openAnswerForm)
-  // rather than expanding inline, so it never sits alongside the still-live
-  // updates thread and read as two competing actions.
-  if (req.status === "open") {
-    const answerBtn = elem("button", "btn-secondary", "Move to Prayer Log");
-    answerBtn.type = "button";
-    answerBtn.addEventListener("click", () => openAnswerForm(req));
-    wrap.appendChild(answerBtn);
-  }
 
   const removeBtn = elem("button", "btn-danger", "Remove");
   removeBtn.type = "button";
@@ -1140,52 +1163,47 @@ function openRemoveConfirm(req, { admin = false } = {}) {
   });
 }
 
-// A single-purpose screen for moving a request to the Prayer Log. It replaces
-// the detail view entirely so the closing note is the only thing in front of
-// the author - no updates thread, no pray button - making the action clear.
-// Cancel returns to the detail; confirming shows the now-logged request.
-function openAnswerForm(req) {
-  openModal((modal) => {
-    modalHeader(modal, "Move to Prayer Log");
+// Confirm the state change after the author chooses "Move to Prayer Log" from
+// the shared update composer. Cancel returns to the detail with the draft
+// preserved; confirming shows the now-logged request.
+function openPrayerLogConfirm(req, note) {
+  renderModalContent((modal) => {
+    modalHeader(modal, "Move to Prayer Log?");
 
     modal.appendChild(elem("p", "answer-lead",
-      `This moves "${req.title}" out of the active list. It stays readable in the `
+      `This will remove "${req.title}" from Active. It will stay readable in the `
       + "Prayer Log, where the group can look back on it."));
 
-    const form = elem("form", "answer-form");
-
-    const note = elem("textarea", "field-input field-textarea");
-    note.id = "prayer-log-note";
-    note.rows = 4;
-    note.maxLength = 2000;
-    note.placeholder =
-      "Share a final update, praise report, or reason this prayer no longer needs to remain active.";
-    form.appendChild(labeled("Closing note (optional)", note));
+    const trimmedNote = note.trim();
+    if (trimmedNote) {
+      const preview = elem("div", "answer-preview");
+      preview.appendChild(elem("p", "testimony-label", "Closing note"));
+      preview.appendChild(elem("blockquote", "answer-note", trimmedNote));
+      modal.appendChild(preview);
+    } else {
+      modal.appendChild(elem("p", "answer-empty-note",
+        "This will move the prayer without a closing note."));
+    }
 
     const errLine = elem("p", "form-error");
     errLine.hidden = true;
-    form.appendChild(errLine);
+    modal.appendChild(errLine);
 
     const actions = elem("div", "modal-actions");
-    const cancel = elem("button", "btn-secondary", "Cancel");
+    const cancel = elem("button", "btn-secondary", "Go back");
     cancel.type = "button";
-    cancel.addEventListener("click", () => renderDetail(req));
-    const confirm = elem("button", "btn-primary", "Add to Prayer Log");
-    confirm.type = "submit";
-    actions.appendChild(cancel);
-    actions.appendChild(confirm);
-    form.appendChild(actions);
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    cancel.addEventListener("click", () => renderDetail(req, { updateDraft: note }));
+    const confirm = elem("button", "btn-primary", "Confirm");
+    confirm.type = "button";
+    confirm.addEventListener("click", async () => {
       confirm.disabled = true;
+      cancel.disabled = true;
       try {
         const data = await api(`/requests/${req.id}/answer`, {
           method: "POST",
-          body: { answerNote: note.value.trim() },
+          body: { answerNote: trimmedNote },
         });
         renderDetail(data.request);
-        // Refresh the underlying feed so the card moves to the Prayer Log.
         Promise.all([loadFeed(), loadStats()]);
       } catch (err) {
         if (err.status === 401) { closeModal(); return handleExpiredSession(); }
@@ -1193,11 +1211,12 @@ function openAnswerForm(req) {
           ? "Could not connect. Try again."
           : "Could not move that. Try again.");
         confirm.disabled = false;
+        cancel.disabled = false;
       }
     });
-
-    modal.appendChild(form);
-    note.focus();
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    modal.appendChild(actions);
   });
 }
 

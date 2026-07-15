@@ -976,6 +976,28 @@ body.modal-open { overflow: hidden; }
     margin-top: 16px;
 }
 
+.update-form-title {
+    margin: 0;
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--text);
+}
+
+.update-form-note {
+    margin: 0;
+    font-size: 0.98rem;
+    line-height: 1.4;
+    color: var(--muted);
+}
+
+.update-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
 .author-actions {
     display: flex;
     flex-direction: column;
@@ -1011,12 +1033,23 @@ body.modal-open { overflow: hidden; }
     gap: 14px;
 }
 
-/* Intro line on the dedicated "Move to Prayer Log" screen. */
+/* Intro line on the Prayer Log confirmation screen. */
 .answer-lead {
     margin: 0 0 18px;
     font-size: 1.05rem;
     line-height: 1.55;
     color: var(--text);
+}
+
+.answer-preview {
+    margin: 0 0 18px;
+}
+
+.answer-empty-note {
+    margin: 0 0 18px;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--muted);
 }
 
 .remove-lead {
@@ -1132,6 +1165,10 @@ body.modal-open { overflow: hidden; }
     .shell-action-group-admin {
         flex: 1 1 auto;
         justify-content: center;
+    }
+
+    .update-actions {
+        flex-direction: column;
     }
 }
 
