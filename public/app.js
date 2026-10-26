@@ -724,7 +724,7 @@ function setPrayState(btn, prayed, kind, req) {
   btn.setAttribute("aria-pressed", prayed ? "true" : "false");
   let label;
   if (kind === "pill") label = prayed ? "Prayed" : "Pray";
-  else label = prayed ? `You prayed · ${req.author} will see your name` : "I prayed for this";
+  else label = prayed ? `You let ${req.author} know you are praying for them` : "I prayed for this";
   btn.replaceChildren(icon(prayed ? "check" : "pray"), text(label));
 }
 
@@ -1246,7 +1246,7 @@ function renderThread(req, { draft = "" } = {}) {
   if (updates.length === 0) {
     body.appendChild(elem("p", "empty-replies", req.isMine
       ? "No updates yet. Share how things are going whenever you're ready."
-      : "No replies yet. A word of encouragement goes a long way."));
+      : "No replies yet."));
   } else {
     const list = elem("ol", "replies");
     for (const u of updates) list.appendChild(renderReply(u, req));
