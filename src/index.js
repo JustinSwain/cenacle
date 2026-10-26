@@ -155,6 +155,10 @@ async function dispatch(request, env, path) {
     return withMember(request, env, (member) => handleStats(env, member));
   }
 
+  if (method === "GET" && path === "/members") {
+    return withMember(request, env, (member) => handleListMembers(env, member));
+  }
+
   if (method === "GET" && path === "/admin/members") {
     return withAdmin(request, env, (member) => handleAdminMembers(env, member));
   }
@@ -515,6 +519,32 @@ async function handleUpdateProfile(request, env, member) {
 
   return json({
     member: { id: member.id, name, role: member.role },
+  });
+}
+
+// ────────────────────────────── members ──────────────────────────────
+
+// Every member can see who belongs to the group, so they know who reads their
+// requests. This roster answers only "who is here": active members with name,
+// role, and join date. Activity, request counts, revoked members, and the audit
+// trail stay behind /admin/members.
+async function handleListMembers(env, viewer) {
+  const { results } = await env.DB.prepare(`
+    SELECT id, name, role, joined_at
+    FROM members
+    WHERE active = 1
+    ORDER BY LOWER(name), id
+    LIMIT 500
+  `).all();
+
+  return json({
+    members: (results ?? []).map((row) => ({
+      id: toInt(row.id),
+      name: String(row.name ?? ""),
+      role: row.role === "admin" ? "admin" : "member",
+      joinedAt: toInt(row.joined_at),
+      isSelf: toInt(row.id) === toInt(viewer.id),
+    })),
   });
 }
 
