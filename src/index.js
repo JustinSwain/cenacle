@@ -33,9 +33,10 @@ const INVITE_WORDS = [
 // used for the manifest and the <meta theme-color> tints. The full colour sets
 // live in public/style.css under [data-palette].
 const PALETTES = {
-  warm: { lightBg: "#fbf3e9", darkBg: "#211b18" },
-  cool: { lightBg: "#eef3f7", darkBg: "#161d23" },
+  warm: { lightBg: "#fbf6ef", darkBg: "#1b1613" },
+  cool: { lightBg: "#f3f6f9", darkBg: "#121820" },
   neutral: { lightBg: "#f4f3f1", darkBg: "#1c1b19" },
+  green: { lightBg: "#f5f7f0", darkBg: "#141812" },
 };
 
 function readConfig(env) {
@@ -962,16 +963,39 @@ async function handleListRequests(request, env, member) {
            AND u.created_at > MAX(COALESCE(s.seen_at, 0), ?)) AS new_comments,
       (SELECT um.name FROM updates u JOIN members um ON um.id = u.member_id
          WHERE u.request_id = r.id AND u.member_id != ?
-         ORDER BY u.created_at DESC LIMIT 1) AS new_comment_author
+         ORDER BY u.created_at DESC LIMIT 1) AS new_comment_author,
+      (SELECT COUNT(*) FROM updates u WHERE u.request_id = r.id) AS update_count,
+      (SELECT u.body FROM updates u
+         WHERE u.request_id = r.id AND u.member_id = r.author_id
+         ORDER BY u.created_at DESC LIMIT 1) AS author_update_body,
+      (SELECT u.created_at FROM updates u
+         WHERE u.request_id = r.id AND u.member_id = r.author_id
+         ORDER BY u.created_at DESC LIMIT 1) AS author_update_at,
+      (SELECT GROUP_CONCAT(pm.name, char(31))
+         FROM prayers p JOIN members pm ON pm.id = p.member_id
+         WHERE p.request_id = r.id AND r.author_id = ?) AS prayer_names
     FROM requests r
     JOIN members m ON m.id = r.author_id
     LEFT JOIN seen s ON s.request_id = r.id AND s.member_id = ?
     WHERE ${where}
     ORDER BY r.created_at DESC
     LIMIT 200
-  `).bind(member.id, member.id, baseline, member.id, member.id, ...whereBinds).all();
+  `).bind(member.id, member.id, baseline, member.id, member.id, member.id, ...whereBinds).all();
 
-  const cards = (results ?? []).map((row) => serializeCard(row, member, baseline, config));
+  const cards = (results ?? []).map((row) => {
+    const card = serializeCard(row, member, baseline, config);
+    // Feed rows show the reply count and the author's latest update inline.
+    // Prayer names are fetched only for the viewer's own requests (the SQL
+    // filters on author_id), matching the detail view's visibility rule.
+    card.updateCount = toInt(row.update_count);
+    card.latestUpdate = row.author_update_body != null
+      ? { snippet: snippet(row.author_update_body), createdAt: toInt(row.author_update_at) }
+      : null;
+    if (card.isMine) {
+      card.prayerNames = row.prayer_names ? String(row.prayer_names).split("\u001f") : [];
+    }
+    return card;
+  });
   return json({ requests: cards });
 }
 
@@ -1061,6 +1085,7 @@ async function handleRequestDetail(env, member, id) {
     body: String(u.body ?? ""),
     createdAt: toInt(u.created_at),
     author: u.author_name,
+    authorId: toInt(u.member_id),
   }));
   card.prayingMembers = (prayingRows ?? []).map((p) => ({
     id: p.member_id,

@@ -21,8 +21,12 @@ anyone else's.
 
 - **Per-person invite codes** - each member gets a unique typed link; no
   passwords or email. Admins can issue, revoke, and replace invites in the app.
-- **Active / Prayer Log / Mine feeds** - browse current requests, look back on
-  the ones that have closed, and find your own.
+- **Mobile-first timeline** - a quiet feed of active requests with a bottom tab
+  bar (Requests, Pray, Log, You), a "you're caught up" marker instead of endless
+  scrolling, and full-screen threads for each request.
+- **Prayer time** - pray through each active request one at a time.
+- **Group members** - everyone can see who is in the group, so they know who
+  reads their requests.
 - **"I prayed" taps** - let people know they're being prayed for without turning
   prayer into a scoreboard. Authors see the names of people who prayed; everyone
   else sees only their own prayed state. Public counts are opt-in.
@@ -32,7 +36,7 @@ anyone else's.
 - **In-app administration** - add members, issue one-time invite links, revoke
   access, manage roles, review recent changes, and moderate posts.
 - **Admin stats** - a private group overview for administrators.
-- **Light & dark mode** with three color palettes (warm, cool, neutral).
+- **Light & dark mode** with four color palettes (warm, cool, green, neutral).
 - **Installable** - "Add to Home Screen" on phones for an app-like experience.
 - **Private by default** - `noindex`, no trackers, no third-party calls.
 
@@ -100,7 +104,7 @@ Everything an admin configures lives in two places:
 | What | Where | Notes |
 |---|---|---|
 | `GROUP_NAME` | `wrangler.jsonc` `vars` | Title, manifest, onboarding, invite copy. |
-| `THEME` | `wrangler.jsonc` `vars` | `warm` (default), `cool`, or `neutral`. Sets both light and dark palettes. |
+| `THEME` | `wrangler.jsonc` `vars` | `warm` (default), `cool`, `green`, or `neutral`. Sets both light and dark palettes. |
 | `PUBLIC_PRAYER_COUNTS` | `wrangler.jsonc` `vars` | `false` by default. Set to `true` only if the group intentionally wants prayer counts visible on everyone's posts. |
 | `SHOW_FEED_COUNTS` | `wrangler.jsonc` `vars` | `false` by default. Set to `true` to show a small count for only the selected feed. |
 | App icon | `public/icon.jpg` | Replace with your own square image. |
