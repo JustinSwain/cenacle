@@ -14,7 +14,9 @@ and tells security researchers how to report issues.
   processor in the usual cloud sense. No other third party is involved: no
   analytics, no trackers, no external calls carrying user data.
 - **Members** see each other's active and Prayer Log requests, who wrote them,
-  and who has prayed. Admins additionally see group statistics, manage member
+  and who has prayed. Every member can also see the group roster (active
+  members' names, roles, and join dates), so they know who can read their
+  requests. Admins additionally see group statistics, manage member
   access and roles, review the administration audit trail, and remove any post.
 
 ## Authentication
