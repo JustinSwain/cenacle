@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Prayer</title>
     <meta name="robots" content="noindex, nofollow">
     <meta name="description" content="Private prayer space for our small group.">
     <link rel="icon" href="/icon.jpg">
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="apple-touch-icon" href="/icon.jpg">
-    <meta name="theme-color" content="#fbf3e9" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#211b18" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#fbf6ef" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1b1613" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Prayer">
     <meta name="mobile-web-app-capable" content="yes">
@@ -33,19 +33,9 @@
 </head>
 <body>
     <main id="app">
-        <!-- Theme toggle: available on both the login gate and the app shell. -->
-        <div class="topbar">
-            <button id="theme-toggle" class="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Dark mode">
-                <span class="theme-toggle-track">
-                    <span class="theme-toggle-icon" aria-hidden="true">&#9728;&#65039;</span>
-                    <span class="theme-toggle-icon" aria-hidden="true">&#127769;</span>
-                    <span class="theme-toggle-thumb"></span>
-                </span>
-            </button>
-        </div>
-
         <!-- Login gate: shown when there is no valid session -->
         <section id="gate" class="gate" hidden>
+            <div class="gate-mark" aria-hidden="true"></div>
             <h1 class="gate-title">Prayer</h1>
             <p class="gate-lead" id="gate-lead">
                 Tap your personal link again, or type your code here.
@@ -61,53 +51,59 @@
                     spellcheck="false"
                     placeholder="like coral-maple-7382"
                     aria-describedby="gate-error">
-                <button type="submit" id="gate-submit">Enter</button>
+                <button type="submit" id="gate-submit" class="btn-primary">Enter</button>
             </form>
             <p id="gate-error" class="gate-error" role="alert" hidden></p>
         </section>
 
-        <!-- Logged-in shell -->
+        <!-- Logged-in shell. Each screen is a view; the router shows one at a time. -->
         <section id="shell" class="shell" hidden>
-            <header class="shell-header">
-                <div class="shell-identity">
-                    <h1 class="shell-title">Prayer</h1>
-                    <p class="session-identity"><span class="session-label">Signed in as</span> <span id="who" class="who"></span></p>
+            <div id="view-feed" class="view" data-view="feed" hidden>
+                <header class="app-bar">
+                    <a href="#/members" class="group-link">
+                        <span class="group-mark" aria-hidden="true"></span>
+                        <span class="group-text">
+                            <h1 class="group-name shell-title">Prayer</h1>
+                            <span class="group-sub" id="group-sub">Active requests</span>
+                        </span>
+                    </a>
+                    <button id="refresh-btn" class="icon-btn refresh-btn" type="button" aria-label="Refresh requests"></button>
+                    <a href="#/you" class="icon-btn avatar-link" aria-label="You and settings">
+                        <span id="my-avatar" class="avatar avatar-sm" aria-hidden="true"></span>
+                    </a>
+                </header>
+                <div class="view-body">
+                    <a href="#/pray" class="pray-banner" id="pray-banner" hidden>
+                        <span class="pray-banner-icon" aria-hidden="true"></span>
+                        <span class="pray-banner-text">
+                            <span class="pray-banner-title">Have a few minutes?</span>
+                            <span class="pray-banner-sub">Pray through each active request</span>
+                        </span>
+                        <span class="pray-banner-chevron" aria-hidden="true"></span>
+                    </a>
+                    <p id="feed-description" class="feed-description" hidden></p>
+                    <div id="feed-status" class="feed-status" hidden></div>
+                    <ul id="feed" class="feed" aria-live="polite"></ul>
                 </div>
-                <div class="shell-header-right" role="toolbar" aria-label="App actions">
-                    <div class="shell-action-group" aria-label="Support">
-                        <button id="help-btn" class="header-action help-action" type="button" aria-label="Help and settings">
-                            <span class="help-icon" aria-hidden="true">?</span>
-                            <span class="action-label">Help</span>
-                        </button>
-                    </div>
-                    <div id="admin-actions" class="shell-action-group shell-action-group-admin" aria-label="Group tools" hidden>
-                        <button id="stats-btn" class="header-action" type="button" aria-label="Group stats" hidden>Stats</button>
-                        <button id="admin-btn" class="header-action" type="button" aria-label="Administration" hidden>Admin</button>
-                    </div>
-                    <div class="shell-action-group" aria-label="Feed actions">
-                        <button id="refresh-btn" class="header-action refresh-btn" type="button" aria-label="Refresh prayer requests">
-                            <span class="refresh-icon" aria-hidden="true">⟳</span>
-                            <span class="action-label">Refresh</span>
-                        </button>
-                    </div>
-                </div>
-            </header>
+                <a href="#/new" class="fab" id="new-request-btn"></a>
+            </div>
 
-            <nav class="tabs" role="tablist" aria-label="Prayer feed">
-                <button class="tab" id="tab-open" data-tab="open" role="tab" aria-selected="true"><span class="tab-label">Active</span><span class="tab-dot" hidden></span></button>
-                <button class="tab" id="tab-answered" data-tab="answered" role="tab" aria-selected="false"><span class="tab-label">Prayer Log</span><span class="tab-dot" hidden></span></button>
-                <button class="tab" id="tab-mine" data-tab="mine" role="tab" aria-selected="false"><span class="tab-label">Mine</span><span class="tab-dot" hidden></span></button>
+            <div id="view-log" class="view" data-view="log" hidden></div>
+            <div id="view-you" class="view" data-view="you" hidden></div>
+            <div id="view-members" class="view view-sub" data-view="members" hidden></div>
+            <div id="view-thread" class="view view-sub" data-view="thread" hidden></div>
+            <div id="view-compose" class="view view-sub" data-view="compose" hidden></div>
+            <div id="view-pray" class="view view-sub view-pray" data-view="pray" hidden></div>
+
+            <nav class="tabbar" id="tabbar" aria-label="Main">
+                <a href="#/" class="tab" data-tab="feed"><span class="tab-icon" data-icon="home"></span><span class="tab-label">Requests</span><span class="tab-dot" hidden></span></a>
+                <a href="#/pray" class="tab" data-tab="pray"><span class="tab-icon" data-icon="pray"></span><span class="tab-label">Pray</span></a>
+                <a href="#/log" class="tab" data-tab="log"><span class="tab-icon" data-icon="book"></span><span class="tab-label">Log</span><span class="tab-dot" hidden></span></a>
+                <a href="#/you" class="tab" data-tab="you"><span class="tab-icon" data-icon="user"></span><span class="tab-label">You</span><span class="tab-dot" hidden></span></a>
             </nav>
-
-            <button id="new-request-btn" class="new-btn" type="button">+ Share a request</button>
-
-            <p id="feed-description" class="feed-description" hidden></p>
-
-            <div id="feed-status" class="feed-status" hidden></div>
-            <ul id="feed" class="feed" aria-live="polite"></ul>
         </section>
 
-        <!-- Modal host: create form and request detail render here -->
+        <!-- Sheet host: confirmations, menus, help, admin and stats render here -->
         <div id="modal-backdrop" class="modal-backdrop" hidden>
             <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
         </div>
