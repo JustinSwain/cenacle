@@ -350,18 +350,12 @@ function prayerCountLabel(n, isOwn) {
   return isOwn ? `${n} others praying` : `${n} people praying`;
 }
 
-// Only the author sees who prayed; the lock says so on every such line.
+// Who prayed, shown only on the author's own requests. Nothing until someone has.
 function prayedByLine(names) {
+  if (!names.length) return null;
   const line = elem("p", "private-line");
-  line.appendChild(icon("lock"));
-  const span = elem("span");
-  if (names.length) {
-    span.appendChild(elem("strong", null, joinNames(names)));
-    span.appendChild(text(" prayed · only you see this"));
-  } else {
-    span.appendChild(text("Only you will see who prays for this."));
-  }
-  line.appendChild(span);
+  line.appendChild(elem("strong", null, joinNames(names)));
+  line.appendChild(text(" prayed"));
   return line;
 }
 
@@ -680,7 +674,8 @@ function renderPost(req, { inLog = false } = {}) {
       main.appendChild(mark);
     }
   } else if (req.isMine) {
-    main.appendChild(prayedByLine(Array.isArray(req.prayerNames) ? req.prayerNames : []));
+    const prayed = prayedByLine(Array.isArray(req.prayerNames) ? req.prayerNames : []);
+    if (prayed) main.appendChild(prayed);
   } else {
     const actions = elem("div", "post-actions");
     const count = SHOW_PUBLIC_PRAYER_COUNTS
@@ -1027,7 +1022,8 @@ function renderMyRequests(box, requests) {
     head.appendChild(link(null, req.title, `#/r/${req.id}`));
     head.appendChild(elem("span", null, relTime(req.createdAt)));
     item.appendChild(head);
-    item.appendChild(prayedByLine(Array.isArray(req.prayerNames) ? req.prayerNames : []));
+    const prayed = prayedByLine(Array.isArray(req.prayerNames) ? req.prayerNames : []);
+    if (prayed) item.appendChild(prayed);
     const note = replyNote(req);
     if (note) item.appendChild(note);
     const actions = elem("div", "modal-actions");
@@ -1226,7 +1222,8 @@ function renderThread(req, { draft = "" } = {}) {
 
   if (req.isMine) {
     const names = (req.prayingMembers || []).map((m) => m.name);
-    if (!logged || names.length) post.appendChild(prayedByLine(names));
+    const prayed = prayedByLine(names);
+    if (prayed) post.appendChild(prayed);
     if (SHOW_PUBLIC_PRAYER_COUNTS) post.appendChild(elem("p", "author-meta", prayerCountLabel(toCount(req.distinctPrayers), true)));
   } else if (!logged) {
     const count = SHOW_PUBLIC_PRAYER_COUNTS
