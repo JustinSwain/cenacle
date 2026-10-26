@@ -612,7 +612,6 @@ function renderFeed(requests) {
     if (i === caughtUpAt) el.feed.appendChild(caughtUpDivider());
     el.feed.appendChild(renderPost(req));
   });
-  el.feed.appendChild(elem("li", "feed-end", "That's every active request. Closed ones live in the Prayer Log."));
   startCardVisibilityTracking(el.feed);
 }
 
@@ -846,7 +845,7 @@ function showLog() {
   const head = elem("header", "page-head");
   const titles = elem("div");
   titles.appendChild(elem("h1", "page-title", "Prayer Log"));
-  titles.appendChild(elem("p", "page-lead", "Where our requests landed. Look back and give thanks."));
+  titles.appendChild(elem("p", "page-lead", "Past requests and their closing notes."));
   head.appendChild(titles);
 
   const filter = elem("div", "segmented");
@@ -1164,7 +1163,8 @@ function memberRow(member) {
   const nameRow = elem("span", "member-name-row");
   nameRow.appendChild(elem("span", "member-name", member.name));
   if (member.isSelf) nameRow.appendChild(elem("span", "member-you", "(you)"));
-  if (member.role === "admin") nameRow.appendChild(elem("span", "tag-admin", "Admin"));
+  // Roles are an admin concern; members just see who is in the group.
+  if (isAdmin() && member.role === "admin") nameRow.appendChild(elem("span", "tag-admin", "Admin"));
   textCol.appendChild(nameRow);
   if (member.joinedAt) {
     textCol.appendChild(elem("span", "member-joined",

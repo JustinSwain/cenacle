@@ -939,13 +939,6 @@ button {
     height: 16px;
 }
 
-.feed-end {
-    margin: 0;
-    padding: 28px 32px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--muted);
-}
 
 /* ─────────────────────────── thread ─────────────────────────── */
 
